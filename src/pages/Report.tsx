@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BarChart3, Activity, ShieldAlert, Cpu, Download, CheckCircle2, AlertTriangle, AlertCircle, Play, FileText, Bot, X, MessageSquare, Send, Search, Network, Terminal } from 'lucide-react';
+import { BarChart3, Activity, ShieldAlert, Cpu, Download, CheckCircle2, AlertTriangle, AlertCircle, Play, FileText, Bot, X, MessageSquare, Send, Search, Network, Terminal, Loader2 as SpinnerIcon } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { useWorkflowRuntime, RunRecord } from '@/context/WorkflowRuntimeContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
@@ -10,6 +10,10 @@ import { applyWorkflowLayout } from '@/lib/layout/applyWorkflowLayout';
 import { cn } from '@/lib/utils';
 import { GoogleGenAI } from '@google/genai';
 import { useNavigate } from 'react-router-dom';
+import { incrementApiCall, isApiLimitReached } from '@/lib/simulation/apiCounter';
+import { getPlatformSimulatedResponse, getRunDetailSimulatedResponse } from '@/lib/simulation/simulatedResponses';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const CustomNode = ({ data, isConnectable }: any) => {
   const riskScore: Record<string, number> = { high: 85, medium: 52, low: 18 };
@@ -51,8 +55,9 @@ export function ReportPage() {
   const totalWorkflowNodes = useMemo(() => runHistory.reduce((acc, r) => acc + (r.nodesCount || 8), 0), [runHistory]);
   const totalBlocks = useMemo(() => runHistory.reduce((acc, r) => acc + r.securityEvents.filter(e => e.status === 'BLOCK').length, 0), [runHistory]);
   const costAvoided = runHistory.reduce((acc, r) => acc + (r.nodesCount || 8) * 47, 0); // Aligned with analysis page formula
+  const [isExporting, setIsExporting] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const runs = runHistory;
     const tRuns = runs.length;
@@ -260,25 +265,49 @@ export function ReportPage() {
 
 </body></html>`;
 
-    // Blob URL approach — onload fires reliably after the document is fully parsed.
-    // doc.write() + onload races (onload can fire before write finishes); Blob URL avoids this.
-    const blob = new Blob([html], { type: 'text/html' });
-    const blobUrl = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        // Clean up after the print dialog is dismissed
-        setTimeout(() => {
-          if (iframe.parentNode) document.body.removeChild(iframe);
-          URL.revokeObjectURL(blobUrl);
-        }, 2000);
-      }, 400);
-    };
-    document.body.appendChild(iframe);
-    iframe.src = blobUrl;
+    // Inject into a hidden off-screen container so html2canvas can paint it
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:960px;background:#0a0a0f;z-index:-1;';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    try {
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        backgroundColor: '#0a0a0f',
+        useCORS: true,
+        allowTaint: true,
+        scrollY: 0,
+        windowWidth: 960,
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      // canvas is at scale:2, so divide by 2 for real pixel size, then convert to mm
+      const imgHeightMM = ((canvas.height / 2) / (canvas.width / 2)) * pdfWidth;
+
+      let heightLeft = imgHeightMM;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeightMM);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position -= pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeightMM);
+        heightLeft -= pdfHeight;
+      }
+
+      const dateStr = new Date().toLocaleDateString('en-CA');
+      pdf.save(`ContextOS-Intelligence-Report-${dateStr}.pdf`);
+    } finally {
+      document.body.removeChild(container);
+      setIsExporting(false);
+    }
   };
 
 
@@ -294,12 +323,38 @@ export function ReportPage() {
     setPlatformMessages(prev => [...prev, { role: 'user', text: question }]);
     setPlatformInput('');
     setPlatformLoading(true);
+
+    // Simulated mode
+    if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
+      await new Promise(r => setTimeout(r, 900));
+      setPlatformMessages(prev => [...prev, { role: 'ai', text: getPlatformSimulatedResponse(question) }]);
+      setPlatformLoading(false);
+      return;
+    }
+
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'AI_STUDIO_FREE_TIER' });
       const summaryContext = runHistory.map(r => `Run ${r.id}: ${r.workflowName}, ${r.nodesCount} nodes, ${r.riskClassification} risk, ${r.escalationOutcome} outcome, ${r.securityEvents.filter(e => e.status === 'BLOCK').length} blocks`).join('\n');
+      incrementApiCall();
       const response = await ai.models.generateContent({
-        model: aiModel || 'gemini-2.5-flash', // use selected model from store
-        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence. You have access to ${runHistory.length} workflow run(s).\nSummary:\n${summaryContext}\n\nQuestion: ${question}\nAnswer concisely in 3-5 sentences.` }] }]
+        model: aiModel || 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise workflow governance assistant.
+You have access to ${runHistory.length} workflow run(s) from this session.
+You ONLY answer questions about:
+- Workflow run history, outcomes, and analytics
+- Security events, compliance posture, and policy findings
+- Platform governance insights
+
+If the question is not directly related to these topics, respond ONLY with:
+"I can only assist with questions about workflow run history, security findings, compliance posture, and platform governance analytics."
+
+DO NOT answer general knowledge, science, history, or any topic outside enterprise workflow governance.
+Answer concisely in 3-5 sentences maximum.
+
+Run Summary:
+${summaryContext}
+
+Question: ${question}` }] }]
       });
       setPlatformMessages(prev => [...prev, { role: 'ai', text: response.text || 'Unable to generate answer.' }]);
     } catch (e: any) {
@@ -392,9 +447,9 @@ export function ReportPage() {
             </h1>
             <p className="text-xs text-slate-500 mt-1">Real-time Session Analytics · Veea Governance Engine · Powered by Gemini</p>
           </div>
-          <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-md flex items-center gap-2">
-            <Download className="w-3 h-3" />
-            <span className="hidden sm:inline">EXPORT PDF</span>
+          <button onClick={handleExport} disabled={isExporting} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-md flex items-center gap-2 transition-all">
+            {isExporting ? <SpinnerIcon className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+            <span className="hidden sm:inline">{isExporting ? 'GENERATING...' : 'EXPORT PDF'}</span>
           </button>
         </div>
 
@@ -684,6 +739,15 @@ function RunDetailModal({ run, onClose }: { run: RunRecord, onClose: () => void 
     const q = chatInput;
     setChatInput('');
     setChatLoading(true);
+
+    // Simulated mode
+    if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
+      await new Promise(r => setTimeout(r, 900));
+      setChatMessages(prev => [...prev, { role: 'ai', text: getRunDetailSimulatedResponse(q) }]);
+      setChatLoading(false);
+      return;
+    }
+
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'AI_STUDIO_FREE_TIER' });
       const context = `Run context: ${run.workflowName}, ${run.nodesCount} nodes, ${run.riskClassification} risk.
@@ -691,9 +755,24 @@ Completed steps: ${run.completedSteps.length}, Failed: ${run.failedSteps.length}
 Escalation: ${run.escalationOutcome} (${run.escalationDetails?.policy})
 Security: ${run.securityEvents.length} total, ${run.securityEvents.filter(x=>x.status==='BLOCK').length} blocks.
 Logs: ${run.executionLogs.slice(-10).map(x=>x.message).join(' | ')}`;
+      incrementApiCall();
       const response = await ai.models.generateContent({
-        model: aiModel || 'gemini-2.5-flash', // use selected model from store
-        contents: [{ role: 'user', parts: [{ text: `You are an enterprise analyst. Answer in 2-4 sentences max.\n\nContext:\n${context}\n\nQuestion: ${q}` }] }]
+        model: aiModel || 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise workflow governance assistant.
+You ONLY answer questions about:
+- This specific workflow run: its steps, risk level, escalation outcome, and security events
+- Compliance findings and policy violations from this run
+
+If the question is not directly related to these topics, respond ONLY with:
+"I can only assist with questions about this workflow run's execution, security posture, and governance findings."
+
+DO NOT answer general knowledge or any topic outside this workflow run.
+Answer concisely in 2-4 sentences max.
+
+Context:
+${context}
+
+Question: ${q}` }] }]
       });
       setChatMessages(prev => [...prev, { role: 'ai', text: response.text || 'Error generating.' }]);
     } catch (e:any) {

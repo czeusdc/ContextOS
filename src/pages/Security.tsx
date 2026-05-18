@@ -121,7 +121,7 @@ export function SecurityDashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         {/* Left: Prompt Feed */}
         <div className="flex flex-col gap-4">
           <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-2 shrink-0">
@@ -251,20 +251,20 @@ export function SecurityDashboard() {
                 </div>
             )}
           </AnimatePresence>
-          
-          <Card className="p-6 bg-gradient-to-br from-[#0d0d14] to-[#0a1128] flex flex-col justify-center border-blue-900/30 rounded-2xl shadow-xl mt-4 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
-             <div className="text-center max-w-sm mx-auto relative z-10">
-               <ShieldCheck className="w-12 h-12 text-blue-400/80 mx-auto mb-4" />
-               <h4 className="text-white font-medium mb-2 tracking-wide">Veea Edge Security Enclave</h4>
-               <p className="text-slate-400 text-xs leading-relaxed">
-                 All autonomous AI actions are processed securely at the edge, complying with enterprise RBAC boundaries and DLP constraints via Veea zero-trust isolation.
-               </p>
-             </div>
-          </Card>
         </div>
       </div>
 
+      {/* Veea Edge Security Enclave — full-width below the grid */}
+      <Card className="p-6 bg-gradient-to-br from-[#0d0d14] to-[#0a1128] flex flex-col justify-center border-blue-900/30 rounded-2xl shadow-xl relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
+         <div className="text-center max-w-sm mx-auto relative z-10">
+           <ShieldCheck className="w-12 h-12 text-blue-400/80 mx-auto mb-4" />
+           <h4 className="text-white font-medium mb-2 tracking-wide">Veea Edge Security Enclave</h4>
+           <p className="text-slate-400 text-xs leading-relaxed">
+             All autonomous AI actions are processed securely at the edge, complying with enterprise RBAC boundaries and DLP constraints via Veea zero-trust isolation.
+           </p>
+         </div>
+      </Card>
       <div>
         <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-2 mb-4">
           <ShieldCheck className="w-4 h-4" />

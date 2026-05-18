@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, ChevronRight, Terminal, AlertTriangle, ShieldCheck, UserCheck, Check, X, Server, MessageSquare, Send, Loader2 as SpinnerIcon } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import { incrementApiCall, isApiLimitReached } from '@/lib/simulation/apiCounter';
+import { getExecuteSimulatedResponse } from '@/lib/simulation/simulatedResponses';
 import { useStore } from '@/lib/store';
 import { useWorkflowRuntime, RunRecord } from '@/context/WorkflowRuntimeContext';
 import { executeWorkflow } from '@/lib/runtime/executeWorkflow';
@@ -12,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { ReactFlow, Background, Controls, useNodesState, useEdgesState, Node } from '@xyflow/react';
 
 export function ExecuteConsole() {
-  const { runStatus, setRunStatus, aiModel, setAiModel, uploadedFiles, analysisLogs, analysisStage } = useStore();
+  const { runStatus, setRunStatus, aiModel, setAiModel, uploadedFiles, analysisLogs, analysisStage, hasRedactedPII } = useStore();
   const runtimeCtx = useWorkflowRuntime();
   const { state: { executionState, workflow } } = runtimeCtx;
   const navigate = useNavigate();
@@ -60,6 +62,15 @@ export function ExecuteConsole() {
     setChatMessages(prev => [...prev, { role: 'user', text: question }]);
     setChatInput('');
     setChatLoading(true);
+
+    // Simulated mode — return keyword-matched canned response
+    if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
+      await new Promise(r => setTimeout(r, 800));
+      setChatMessages(prev => [...prev, { role: 'ai', text: getExecuteSimulatedResponse(question) }]);
+      setChatLoading(false);
+      return;
+    }
+
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'AI_STUDIO_FREE_TIER' });
       const context = JSON.stringify({
@@ -73,9 +84,25 @@ export function ExecuteConsole() {
         })),
         analysis_report: workflow.analysis_report,
       });
+      incrementApiCall();
       const response = await ai.models.generateContent({
-        model: aiModel || 'gemini-2.5-flash', // use selected model from store
-        contents: [{ role: 'user', parts: [{ text: `You are a concise enterprise workflow analyst. Answer in 2-4 sentences maximum. Workflow context:\n${context}\n\nQuestion: ${question}` }] }],
+        model: aiModel || 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise workflow governance assistant.
+You ONLY answer questions about:
+- The current workflow execution: its steps, nodes, departments, and orchestration logs
+- Security events: policy violations, guardrail blocks, IAM escalations
+- Execution results: completed steps, timing, errors, and retries
+
+If the question is not directly related to these topics, respond ONLY with:
+"I can only assist with questions about the current workflow execution, its logs, security events, and step completion status."
+
+DO NOT answer general knowledge, science, history, or any topic outside enterprise workflow governance.
+Answer concisely in 2-4 sentences maximum.
+
+Workflow context:
+${context}
+
+Question: ${question}` }] }],
       });
       const answer = response.text || 'Unable to generate an answer.';
       setChatMessages(prev => [...prev, { role: 'ai', text: answer }]);
@@ -153,7 +180,7 @@ export function ExecuteConsole() {
       setShowBanner(true);
       setSpeed(1);
 
-      executeWorkflow(workflow, { ...runtimeCtx, setAiModel }, aiModel, { getSpeed: () => speedRef.current }).then(() => {
+      executeWorkflow(workflow, { ...runtimeCtx, setAiModel }, aiModel, { getSpeed: () => speedRef.current, hasRedactedPII }).then(() => {
         runtimeCtx.createAndAddRunRecord(workflow, analysisLogs, uptimeRef.current);
         setRunStatus('completed');
       });

@@ -8,6 +8,7 @@ export const AI_MODELS = [
   'gemini-3-flash-preview',
   'gemini-2.5-pro',
   'gemini-2.5-flash',
+  'gemini-simulated',
 ] as const;
 
 export type AIModel = typeof AI_MODELS[number];

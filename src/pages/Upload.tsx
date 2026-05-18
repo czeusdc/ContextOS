@@ -7,6 +7,7 @@ import { useStore } from '@/lib/store';
 import { useWorkflowRuntime } from '@/context/WorkflowRuntimeContext';
 import { toast } from 'sonner';
 import { DEMO_WORKFLOW, DEMO_FILE_NAME } from '@/lib/demo-workflow';
+import { isApiLimitReached } from '@/lib/simulation/apiCounter';
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -77,6 +78,16 @@ export function UploadPage() {
   const startMockProcess = async (selectedFiles: File[]) => {
     if (selectedFiles.length === 0) return;
     setFiles(selectedFiles);
+
+    if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
+      toast.info('Offline simulation mode active. Loading pre-built demonstration workflow.', {
+        id: 'simulated-upload',
+        duration: 4000
+      });
+      loadDemoScenario();
+      return;
+    }
+
     setUploadStatus('analyzing');
     const primaryFile = selectedFiles[0];
     

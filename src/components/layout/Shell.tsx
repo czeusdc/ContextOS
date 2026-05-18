@@ -46,9 +46,13 @@ export function Shell() {
         </div>
         <div className="flex items-center gap-3 relative z-50">
           {/* Gemini model badge */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">
-            <Zap className="w-3 h-3 fill-indigo-400 text-indigo-400" />
-            <span className="text-[10px] font-mono uppercase tracking-widest">{aiModel}</span>
+          <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+            aiModel === 'gemini-simulated'
+              ? 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+              : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300'
+          }`}>
+            <Zap className={`w-3 h-3 fill-current ${aiModel === 'gemini-simulated' ? 'text-slate-400' : 'text-indigo-400 fill-indigo-400'}`} />
+            <span className="text-[10px] font-mono uppercase tracking-widest">{aiModel === 'gemini-simulated' ? 'SIMULATED' : aiModel}</span>
           </div>
           <div className="hidden sm:block w-48">
             <Select value={aiModel} onValueChange={(val: any) => setAiModel(val)}>
@@ -60,8 +64,10 @@ export function Shell() {
               </SelectTrigger>
               <SelectContent className="bg-[#0d0d14] border-white/10 text-slate-300 font-mono text-[11px] z-50 relative">
                 {AI_MODELS.map((model) => (
-                  <SelectItem key={model} value={model} className="hover:bg-white/5 focus:bg-white/5 cursor-pointer">
-                    {model.toUpperCase()}
+                  <SelectItem key={model} value={model} className={`hover:bg-white/5 focus:bg-white/5 cursor-pointer ${
+                    model === 'gemini-simulated' ? 'text-slate-400 border-t border-white/5 mt-1 pt-2' : ''
+                  }`}>
+                    {model === 'gemini-simulated' ? '⚫ Gemini (Simulated)' : model.toUpperCase()}
                   </SelectItem>
                 ))}
               </SelectContent>

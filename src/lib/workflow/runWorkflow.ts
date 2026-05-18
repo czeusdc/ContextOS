@@ -3,8 +3,20 @@ import { fixWorkflow } from "@/lib/validation/workflowFixer";
 import { buildWorkflowPrompt, getWorkflowSystemInstruction } from "@/lib/prompts/workflow/buildPrompt";
 import { GoogleGenAI } from "@google/genai";
 import { toast } from "sonner";
+import { incrementApiCall, isApiLimitReached } from "@/lib/simulation/apiCounter";
+import { DEMO_WORKFLOW } from "@/lib/demo-workflow";
 
 export async function generateWorkflow(input: any, preferredModel: string = "gemini-3-flash-preview", retry = 0, setAiModel?: (model: any) => void): Promise<any> {
+  // Simulated mode: skip all API calls, return pre-built demo workflow
+  if (preferredModel === 'gemini-simulated' || isApiLimitReached()) {
+    if (setAiModel) setAiModel('gemini-simulated');
+    toast.warning('Your Gemini API credits for today have been used. ContextOS is now running in simulation mode.', {
+      id: 'simulated-mode',
+      duration: 6000,
+    });
+    return { workflow: DEMO_WORKFLOW, usedModel: 'gemini-simulated' };
+  }
+
   try {
     let parsed: any;
     let activeModel = preferredModel;
@@ -50,6 +62,7 @@ export async function generateWorkflow(input: any, preferredModel: string = "gem
           if (responseText) {
             console.log(`Successfully generated with model: ${model}`);
             activeModel = model;
+            incrementApiCall(); // track usage for daily limit
             break;
           }
         } catch (err: any) {
@@ -71,41 +84,14 @@ export async function generateWorkflow(input: any, preferredModel: string = "gem
 
       parsed = JSON.parse(responseText || "{}");
     } catch (e: any) {
-      console.warn("AI generation failed or rate limited, falling back to mock workflow graph:", e.message);
-      toast.error("Gemini API Error: Using mock workflow data temporarily.", {
-        description: "Rate limit exceeded or quota exhausted across available models."
+      console.warn("AI generation failed or rate limited, falling back to simulated mode:", e.message);
+      // All models exhausted — switch to simulated mode
+      if (setAiModel) setAiModel('gemini-simulated');
+      toast.warning('Your Gemini API credits for today have been used. ContextOS is now running in simulation mode.', {
+        id: 'simulated-mode',
+        duration: 6000,
       });
-      // Fallback mock graph
-      parsed = {
-        workflow_name: "Employee Offboarding Demo",
-        workflow_summary: "Automated standard offboarding",
-        analysis_report: {
-          workflow_type: "Employee Offboarding",
-          departments_detected: ["HR", "IT", "Finance", "Legal"],
-          systems_detected: ["Google Workspace", "Slack", "HRIS", "Payroll"],
-          risk_classification: "medium",
-          estimated_automation_coverage_percent: 82
-        },
-        execution_plan: ["step-1", "step-2", "step-3", "step-4"],
-        nodes: [
-          { id: "dept-hr", type: "department", data: { label: "HR Department", department: "hr", nodeType: "department", riskLevel: "low", status: "pending" }, layout: { lane: "hr", position: 0 } },
-          { id: "dept-it", type: "department", data: { label: "IT Department", department: "it", nodeType: "department", riskLevel: "low", status: "pending" }, layout: { lane: "it", position: 0 } },
-          { id: "dept-finance", type: "department", data: { label: "Finance", department: "finance", nodeType: "department", riskLevel: "low", status: "pending" }, layout: { lane: "finance", position: 0 } },
-          { id: "dept-legal", type: "department", data: { label: "Legal", department: "legal", nodeType: "department", riskLevel: "low", status: "pending" }, layout: { lane: "legal", position: 0 } },
-          { id: "step-1", type: "action", data: { label: "Deactivate employee record", department: "hr", system: "HRIS", nodeType: "action", riskLevel: "low", status: "pending" }, layout: { lane: "hr", position: 1 } },
-          { id: "step-2", type: "action", data: { label: "Disable Google Workspace", department: "it", system: "Google Workspace", nodeType: "action", riskLevel: "medium", status: "pending" }, layout: { lane: "it", position: 2 } },
-          { id: "step-3", type: "action", data: { label: "Revoke Slack Access", department: "it", system: "Slack", nodeType: "action", riskLevel: "medium", status: "pending" }, layout: { lane: "it", position: 3 } },
-          { id: "step-4", type: "action", data: { label: "Process final payroll", department: "finance", system: "Payroll", nodeType: "action", riskLevel: "high", status: "pending" }, layout: { lane: "finance", position: 4 } },
-        ],
-        edges: [
-          { id: "e1", source: "dept-hr", target: "step-1" },
-          { id: "e2", source: "step-1", target: "step-2" },
-          { id: "e-it", source: "dept-it", target: "step-2" },
-          { id: "e3", source: "step-2", target: "step-3" },
-          { id: "e4", source: "step-3", target: "step-4" },
-          { id: "e-fin", source: "dept-finance", target: "step-4" }
-        ]
-      };
+      return { workflow: DEMO_WORKFLOW, usedModel: 'gemini-simulated' };
     }
 
     if (!parsed) {

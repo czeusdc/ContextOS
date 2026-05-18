@@ -14,6 +14,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Play, Info, AlertTriangle, ShieldCheck, ShieldAlert, FileText, Video, Server, Activity, Plus, MessageSquare, Send, X, Loader2 as SpinnerIcon } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import { incrementApiCall, isApiLimitReached } from '@/lib/simulation/apiCounter';
+import { getGraphSimulatedResponse } from '@/lib/simulation/simulatedResponses';
 
 import { useStore } from '@/lib/store';
 import { useWorkflowRuntime } from '@/context/WorkflowRuntimeContext';
@@ -142,6 +144,15 @@ export function GraphDashboard() {
     setChatMessages(prev => [...prev, { role: 'user', text: question }]);
     setChatInput('');
     setChatLoading(true);
+
+    // Simulated mode — return keyword-matched canned response instantly
+    if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
+      await new Promise(r => setTimeout(r, 800)); // realistic thinking delay
+      setChatMessages(prev => [...prev, { role: 'ai', text: getGraphSimulatedResponse(question) }]);
+      setChatLoading(false);
+      return;
+    }
+
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'AI_STUDIO_FREE_TIER' });
       const context = JSON.stringify({
@@ -155,9 +166,25 @@ export function GraphDashboard() {
         })),
         analysis_report: workflow.analysis_report,
       });
+      incrementApiCall();
       const response = await ai.models.generateContent({
-        model: aiModel || 'gemini-2.5-flash', // use selected model from store
-        contents: [{ role: 'user', parts: [{ text: `You are a concise enterprise workflow analyst. Answer in 2-4 sentences maximum. Workflow context:\n${context}\n\nQuestion: ${question}` }] }],
+        model: aiModel || 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise workflow governance assistant.
+You ONLY answer questions about:
+- The current workflow: its steps, nodes, departments, risk levels, and dependencies
+- Security events: policy violations, guardrail blocks, IAM escalations, and compliance findings
+- Execution results and orchestration context
+
+If the question is not directly related to these topics, respond ONLY with:
+"I can only assist with questions about this workflow's execution, security posture, and governance findings."
+
+DO NOT answer general knowledge, science, history, or any topic outside enterprise workflow governance.
+Answer concisely in 2-4 sentences maximum.
+
+Workflow context:
+${context}
+
+Question: ${question}` }] }],
       });
       const answer = response.text || 'Unable to generate an answer.';
       setChatMessages(prev => [...prev, { role: 'ai', text: answer }]);
