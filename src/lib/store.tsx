@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
+import { WorkflowPayload } from './types';
 
 export type UploadStatus = 'idle' | 'analyzing' | 'redacting' | 'extracting' | 'identifying' | 'done';
 export type RunStatus = 'idle' | 'running' | 'completed';
@@ -20,8 +21,8 @@ interface ContextOSState {
   setRunStatus: (status: RunStatus) => void;
   activeNodeId: string | null;
   setActiveNodeId: (id: string | null) => void;
-  workflow: any | null;
-  setWorkflow: (workflow: any | null) => void;
+  workflow: WorkflowPayload | null;
+  setWorkflow: (workflow: WorkflowPayload | null) => void;
   aiModel: AIModel;
   setAiModel: (model: AIModel) => void;
   filePayload: any | null;
@@ -48,7 +49,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
   const [runStatus, setRunStatus] = useState<RunStatus>('idle');
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-  const [workflow, setWorkflow] = useState<any | null>(null);
+  const [workflow, setWorkflow] = useState<WorkflowPayload | null>(null);
   const [aiModel, setAiModel] = useState<AIModel>('gemini-3-flash-preview');
   const [filePayload, setFilePayload] = useState<any | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);

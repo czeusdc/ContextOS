@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import { WorkflowPayload } from '@/lib/types';
 
 export interface ExecutionLog {
   id: string;
@@ -33,7 +34,7 @@ export interface RunRecord {
   id: string;
   completedAt: string;
   workflowName: string;
-  workflowSnapshot: any;
+  workflowSnapshot: WorkflowPayload;
   executionLogs: ExecutionLog[];
   analysisLogs: string[];
   securityEvents: SecurityEvent[];
@@ -48,7 +49,7 @@ export interface RunRecord {
 }
 
 export interface WorkflowRuntimeState {
-  workflow: any | null;
+  workflow: WorkflowPayload | null;
   selectedNodeId: string | null;
   executionState: {
     running: boolean;
@@ -66,7 +67,7 @@ export interface WorkflowRuntimeState {
 
 interface WorkflowRuntimeContextValue {
   state: WorkflowRuntimeState;
-  setWorkflow: (workflow: any | null) => void;
+  setWorkflow: (workflow: WorkflowPayload | null) => void;
   setSelectedNodeId: (id: string | null) => void;
   startExecution: () => void;
   stopExecution: () => void;
@@ -79,7 +80,7 @@ interface WorkflowRuntimeContextValue {
   updateSystemState: (system: keyof SystemStates, data: Partial<SystemStates[keyof SystemStates]>) => void;
   triggerEscalation: (details: EscalationDetails) => Promise<'approved' | 'denied'>;
   resolveEscalation: (status: 'approved' | 'denied') => void;
-  createAndAddRunRecord: (workflowDetails: any, analysisLogs: string[], durationSeconds: number) => void;
+  createAndAddRunRecord: (workflowDetails: WorkflowPayload, analysisLogs: string[], durationSeconds: number) => void;
 }
 
 const WorkflowRuntimeContext = createContext<WorkflowRuntimeContextValue | undefined>(undefined);
@@ -108,7 +109,7 @@ export function WorkflowRuntimeProvider({ children }: { children: ReactNode }) {
     runHistory: [],
   });
 
-  const setWorkflow = (workflow: any | null) => {
+  const setWorkflow = (workflow: WorkflowPayload | null) => {
     setState(prev => ({ ...prev, workflow }));
   };
 
@@ -116,7 +117,7 @@ export function WorkflowRuntimeProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, selectedNodeId: id }));
   };
 
-  const createAndAddRunRecord = (workflowDetails: any, analysisLogs: string[], durationSeconds: number) => {
+  const createAndAddRunRecord = (workflowDetails: WorkflowPayload, analysisLogs: string[], durationSeconds: number) => {
     setState(prev => {
       const record: RunRecord = {
         id: 'RUN-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
@@ -132,7 +133,7 @@ export function WorkflowRuntimeProvider({ children }: { children: ReactNode }) {
         failedSteps: [...prev.executionState.failedSteps],
         escalationOutcome: prev.executionState.escalationStatus as any,
         escalationDetails: prev.executionState.escalationDetails,
-        riskClassification: (workflowDetails as any)?.analysis_report?.risk_classification || 'medium',
+        riskClassification: workflowDetails?.analysis_report?.risk_classification || 'medium',
         nodesCount: (workflowDetails?.nodes || []).length,
       };
 

@@ -126,7 +126,7 @@ export function AnalysisPage() {
        // Wait a sec then add the event
        setTimeout(() => {
           addSecurityEvent({
-            id: 'pii-redact-' + Date.now().toString(),
+            id: 'pii-redact-' + crypto.randomUUID(),
             status: 'REVIEW',
             message: `[PRE-FLIGHT] Detected and redacted PII (SSN, Phone Numbers, Emails) from document "${name}" before LLM processing.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })

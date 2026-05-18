@@ -91,6 +91,7 @@ export function UploadPage() {
     setUploadStatus('analyzing');
     const primaryFile = selectedFiles[0];
     
+    let piiFoundCount = 0;
     try {
       let inputPayload: any = "Employee offboarding workflow";
       
@@ -111,6 +112,16 @@ export function UploadPage() {
           const pageText = textContent.items.map((item: any) => item.str).join(' ');
           fullText += pageText + '\n';
         }
+        
+        const ssnCount = (fullText.match(/\d{3}-\d{2}-\d{4}/g) || []).length;
+        const emailCount = (fullText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || []).length;
+        const phoneCount = (fullText.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g) || []).length;
+        piiFoundCount = ssnCount + emailCount + phoneCount;
+        
+        fullText = fullText.replace(/\d{3}-\d{2}-\d{4}/g, '[REDACTED-SSN]')
+                           .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, '[REDACTED-EMAIL]')
+                           .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[REDACTED-PHONE]');
+                           
         inputPayload = fullText || "Employee offboarding workflow";
       } else if (primaryFile.type.startsWith('image/') || primaryFile.name.match(/\.(png|jpe?g|webp)$/i)) {
         const base64Data = await new Promise<string>((resolve, reject) => {
@@ -133,7 +144,7 @@ export function UploadPage() {
 
       setUploadStatus('redacting');
       await new Promise(r => setTimeout(r, 1200));
-      toast.success('PII Data detected and redacted', {
+      toast.success(`${piiFoundCount > 0 ? piiFoundCount : 'PII'} Data instances detected & redacted`, {
         description: 'Removed social security numbers, emails, and phone numbers from the extraction context.',
         icon: '🛡️'
       });
@@ -228,7 +239,7 @@ export function UploadPage() {
                 multiple
                 ref={fileInputRef} 
                 onChange={handleFileSelect}
-                accept=".pdf,.png,.jpg,.jpeg,.mp4"
+                accept=".pdf,.png,.jpg,.jpeg"
               />
               <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mb-3">
                 <UploadCloud className="w-6 h-6 text-slate-400" />

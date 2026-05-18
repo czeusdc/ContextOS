@@ -46,9 +46,9 @@ export function Landing() {
       <footer className="border-t border-white/5 py-8 flex items-center justify-between px-8 text-xs font-mono text-slate-600 bg-[#0B0F19]">
         <div>© 2026 ContextOS Intelligence. All rights reserved.</div>
         <div className="flex gap-6">
-          <a href="#" className="hover:text-slate-400">Security</a>
-          <a href="#" className="hover:text-slate-400">Privacy</a>
-          <a href="#" className="hover:text-slate-400">Terms</a>
+          <span className="hover:text-slate-400 cursor-pointer">Security</span>
+          <span className="hover:text-slate-400 cursor-pointer">Privacy</span>
+          <span className="hover:text-slate-400 cursor-pointer">Terms</span>
         </div>
       </footer>
     </div>

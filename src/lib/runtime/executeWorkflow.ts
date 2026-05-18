@@ -47,7 +47,7 @@ export async function executeWorkflow(
   };
 
   addLog({
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     timestamp: now(),
     message: '[ORCHESTRATOR] Starting workflow orchestration sequence...'
   });
@@ -59,7 +59,7 @@ export async function executeWorkflow(
     const actionNodes = nodes.filter(n => n.data?.nodeType !== 'department' && n.data?.nodeType !== 'system');
 
     addLog({
-      id: Date.now().toString() + Math.random(),
+      id: crypto.randomUUID(),
       timestamp: now(),
       message: '[ORCHESTRATOR] Planning execution path and payload schemas...'
     });
@@ -112,10 +112,11 @@ export async function executeWorkflow(
           }
         } catch (err: any) {
           console.warn(`Model ${model} failed in executeWorkflow single-shot:`, err.message || err);
+          if (!err.message?.includes('429') && !err.message?.includes('RESOURCE_EXHAUSTED')) {
+            throw err;
+          }
           if (model.includes("3.1")) {
             console.log(`Failed to execute with ${model}, falling back...`);
-          } else if (!err.message?.includes('429') && !err.message?.includes('RESOURCE_EXHAUSTED')) {
-            throw err;
           }
         }
       }
@@ -142,7 +143,7 @@ export async function executeWorkflow(
 
     // Announce orchestration
     addLog({
-      id: Date.now().toString() + Math.random(),
+      id: crypto.randomUUID(),
       timestamp: now(),
       message: `[ORCHESTRATOR] Initiating orchestration for task: ${node.data.label}...`
     });
@@ -152,7 +153,7 @@ export async function executeWorkflow(
       if (node.data?.riskLevel === 'high') {
         highRiskCount++;
         // On the second high-risk node, we intentionally block it to simulate hard blocks
-        if (highRiskCount === 2 || node.data?.label?.toLowerCase().includes('archive') || node.data?.label?.toLowerCase().includes('export')) {
+        if (highRiskCount >= 2) {
           isExplicitlyBlocked = true;
         }
       }
@@ -161,25 +162,25 @@ export async function executeWorkflow(
         // Halt downstream processing but trigger escalation first
         const failMessage = `Attempted action '${node.data.label}' violated edge isolation policy SEC-447. Veea manual approval required.`;
         addLog({
-          id: Date.now().toString() + Math.random(),
+          id: crypto.randomUUID(),
           timestamp: now(),
           message: `[SECURITY] SEC-447 Data Exfiltration Guard triggered.`
         });
         await delay(600 + Math.random() * 800);
         addLog({
-          id: Date.now().toString() + Math.random(),
+          id: crypto.randomUUID(),
           timestamp: now(),
           message: `[GOVERNANCE] Execution path quarantined pending human approval.`
         });
         await delay(500 + Math.random() * 700);
         addLog({
-          id: Date.now().toString() + Math.random(),
+          id: crypto.randomUUID(),
           timestamp: now(),
           message: `[ORCHESTRATOR] Dependent operations suspended.`
         });
 
         runtimeCtx.addSecurityEvent({
-          id: Date.now().toString(),
+          id: crypto.randomUUID(),
           status: 'BLOCK',
           message: failMessage,
           timestamp: now(),
@@ -201,38 +202,38 @@ export async function executeWorkflow(
 
           if (decision === 'approved') {
             addLog({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               timestamp: now(),
               message: `[GOVERNANCE] Manual approval received from Security Officer.`
             });
             await delay(800 + Math.random() * 1000);
             addLog({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               timestamp: now(),
               message: `[ORCHESTRATOR] Resuming suspended execution path.`
             });
             await delay(900 + Math.random() * 600);
             addLog({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               timestamp: now(),
               message: `[${dept}] Sandbox validated. Continuing secure processing...`
             });
             isExplicitlyBlocked = false; // allow to continue below
           } else {
             addLog({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               timestamp: now(),
               message: `[GOVERNANCE] Execution denied by Security Officer.`
             });
             await delay(700 + Math.random() * 800);
             addLog({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               timestamp: now(),
               message: `[ORCHESTRATOR] Terminating branch execution.`
             });
             await delay(600 + Math.random() * 500);
             addLog({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               timestamp: now(),
               message: `[SECURITY] Incident record SEC-447-2026 archived.`
             });
@@ -294,7 +295,7 @@ export async function executeWorkflow(
             logLine = logLine.replace(/\$[\d,]+\.?\d*/g, '[REDACTED-FINANCIAL]');
           }
           addLog({
-            id: Date.now().toString() + Math.random(),
+            id: crypto.randomUUID(),
             timestamp: now(),
             message: `[${dept}] ${logLine}`
           });
@@ -321,7 +322,7 @@ export async function executeWorkflow(
         const randomPolicy = policies[Math.floor(Math.random() * policies.length)];
 
         addSecurityEvent({
-          id: Date.now().toString(),
+          id: crypto.randomUUID(),
           status: 'REVIEW',
           message: `High risk action intercepted: ${node.data.label}`,
           timestamp: now(),
@@ -329,14 +330,14 @@ export async function executeWorkflow(
         });
         await delay(800 + Math.random() * 1200);
         addLog({
-          id: Date.now().toString() + Math.random(),
+          id: crypto.randomUUID(),
           timestamp: now(),
           message: `[VEEA-SHIELD] ${randomMessage}`
         });
 
         await delay(1200 + Math.random() * 1000);
         addLog({
-          id: Date.now().toString() + Math.random(),
+          id: crypto.randomUUID(),
           timestamp: now(),
           message: `[GOVERNANCE] Execution paused pending IAM verification.`
         });
@@ -377,7 +378,7 @@ export async function executeWorkflow(
 
       completeStep(node.id);
       addLog({
-        id: Date.now().toString() + Math.random(),
+        id: crypto.randomUUID(),
         timestamp: now(),
         message: `[ORCHESTRATOR] Task ${node.id} successfully marshaled: ${runtimeResult.execution_summary || 'Task completed'}`
       });
@@ -385,7 +386,7 @@ export async function executeWorkflow(
     } catch (error: any) {
       console.error(`Orchestration failed at node ${node.id}:`, error);
       addLog({
-        id: Date.now().toString() + Math.random(),
+        id: crypto.randomUUID(),
         timestamp: now(),
         message: `[CRITICAL] Orchestration engine stalled at node ${node.id}. Safety fallback engaged.`
       });
@@ -401,13 +402,13 @@ export async function executeWorkflow(
 
   if (hasDenied) {
     addLog({
-      id: Date.now().toString() + Math.random(),
+      id: crypto.randomUUID(),
       timestamp: now(),
       message: '[ORCHESTRATOR] 1 execution path terminated due to policy violation.'
     });
   } else {
     addLog({
-      id: Date.now().toString() + Math.random(),
+      id: crypto.randomUUID(),
       timestamp: now(),
       message: '[ORCHESTRATOR] Workflow execution completed successfully.'
     });

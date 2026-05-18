@@ -1,9 +1,9 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
-import { buildWorkflowPrompt } from "./src/lib/prompts/workflow/buildPrompt.js";
-import { SYSTEM_PROMPT } from "./src/lib/prompts/workflow/systemPrompt.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 async function startServer() {
   const app = express();

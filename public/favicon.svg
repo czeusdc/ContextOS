@@ -1,0 +1,24 @@
+<svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logo-top" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#60A5FA" />
+    </linearGradient>
+    <linearGradient id="logo-right" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#4F46E5" />
+    </linearGradient>
+    <linearGradient id="logo-bottom" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#3730A3" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </linearGradient>
+    <linearGradient id="logo-left" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="7" width="5.5" height="15" rx="2.75" fill="url(#logo-left)" />
+  <rect x="2" y="2" width="15" height="5.5" rx="2.75" fill="url(#logo-top)" />
+  <rect x="16.5" y="2" width="5.5" height="15" rx="2.75" fill="url(#logo-right)" />
+  <rect x="7" y="16.5" width="15" height="5.5" rx="2.75" fill="url(#logo-bottom)" />
+</svg>

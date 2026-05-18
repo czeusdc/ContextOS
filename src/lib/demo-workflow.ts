@@ -39,13 +39,13 @@ export const DEMO_WORKFLOW = {
       type: "action",
       label: "Revoke VPN & SSO Access",
       department: "IT",
-      riskLevel: "medium",
+      riskLevel: "high",
       layout: { order: 2 },
       data: {
         nodeType: "action",
         label: "Revoke VPN & SSO Access",
         department: "IT",
-        riskLevel: "medium",
+        riskLevel: "high",
         logic_reasoning: "Immediately revoke VPN credentials and invalidate all active SSO tokens to prevent unauthorized access from the departing employee's accounts.",
         evidenceSources: [{ type: "document", reference: "SOP_OFFBOARD_v3.pdf" }]
       }

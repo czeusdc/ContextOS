@@ -1,10 +1,13 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BarChart3, Activity, ShieldAlert, Cpu, Download, CheckCircle2, AlertTriangle, AlertCircle, Play, FileText, Bot, X, MessageSquare, Send, Search, Network, Terminal, Loader2 as SpinnerIcon } from 'lucide-react';
+import { 
+  BarChart3, Activity, ShieldAlert, Cpu, Download, CheckCircle2, 
+  AlertTriangle, AlertCircle, Play, FileText, Bot, X, MessageSquare, 
+  Send, Search, Network, Terminal, Loader2 as SpinnerIcon, Grid,
+  Zap, TrendingUp, Layers, Lock, Share2, Printer, Map, Lightbulb
+} from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { useWorkflowRuntime, RunRecord } from '@/context/WorkflowRuntimeContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
-import { Logo } from '@/components/ui/logo';
 import { ReactFlow, Background, Controls, Handle, Position } from '@xyflow/react';
 import { applyWorkflowLayout } from '@/lib/layout/applyWorkflowLayout';
 import { cn } from '@/lib/utils';
@@ -13,18 +16,22 @@ import { useNavigate } from 'react-router-dom';
 import { incrementApiCall, isApiLimitReached } from '@/lib/simulation/apiCounter';
 import { getPlatformSimulatedResponse, getRunDetailSimulatedResponse } from '@/lib/simulation/simulatedResponses';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { toJpeg } from 'html-to-image';
+import { Logo } from '@/components/ui/logo';
+
+import geminiLogo from '@/assets/gemini-logo.svg';
+import veeaLogo from '@/assets/veea-logo.svg';
 
 const CustomNode = ({ data, isConnectable }: any) => {
   const riskScore: Record<string, number> = { high: 85, medium: 52, low: 18 };
-  const riskColor = data.riskLevel === 'high' ? 'text-red-400/70' : data.riskLevel === 'medium' ? 'text-amber-400/70' : 'text-slate-600';
+  const riskColor = data.riskLevel === 'high' ? 'text-rose-400/70' : data.riskLevel === 'medium' ? 'text-amber-400/70' : 'text-slate-600';
   
   return (
     <>
       <Handle type="target" position={Position.Top} isConnectable={isConnectable} className="opacity-0" />
       <div className={cn("relative w-full h-full flex items-center justify-center p-2 text-center break-words rounded-md border", 
-          data.status === 'completed' ? 'border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)] bg-green-500/10' : 
-          data.status === 'error' ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] bg-red-500/10' : 
+          data.status === 'completed' ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)] bg-emerald-500/10' : 
+          data.status === 'error' ? 'border-rose-500 shadow-[0_0_15px_rgba(225,29,72,0.4)] bg-rose-500/10' : 
           'border-slate-700 bg-slate-900/50'
       )}>
         <span className="text-[10px] sm:text-xs font-semibold">{data.label}</span>
@@ -45,272 +52,136 @@ export function ReportPage() {
   const { state: { runHistory } } = useWorkflowRuntime();
   const { hasRedactedPII, aiModel } = useStore();
   const navigate = useNavigate();
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const heroRef = useRef<HTMLDivElement>(null);
+  const metricsRef = useRef<HTMLDivElement>(null);
+  const chartsRef = useRef<HTMLDivElement>(null);
+  const recommendationsRef = useRef<HTMLDivElement>(null);
+  const pdfHeaderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.title = "Intelligence Report | ContextOS";
+    document.title = "Executive Intelligence | ContextOS";
   }, []);
 
   const totalRuns = runHistory.length;
   const totalNodesExecuted = useMemo(() => runHistory.reduce((acc, r) => acc + r.completedSteps.length + (r.failedSteps?.length || 0), 0), [runHistory]);
   const totalWorkflowNodes = useMemo(() => runHistory.reduce((acc, r) => acc + (r.nodesCount || 8), 0), [runHistory]);
   const totalBlocks = useMemo(() => runHistory.reduce((acc, r) => acc + r.securityEvents.filter(e => e.status === 'BLOCK').length, 0), [runHistory]);
-  const costAvoided = runHistory.reduce((acc, r) => acc + (r.nodesCount || 8) * 47, 0); // Aligned with analysis page formula
+  const costAvoided = runHistory.reduce((acc, r) => acc + (r.nodesCount || 8) * 47, 0);
+  
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async () => {
-    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const runs = runHistory;
-    const tRuns = runs.length;
-    const tNodes = runs.reduce((a, r) => a + r.completedSteps.length + (r.failedSteps?.length || 0), 0);
-    const tBlocks = runs.reduce((a, r) => a + r.securityEvents.filter(e => e.status === 'BLOCK').length, 0);
-    const tCost = runs.reduce((a, r) => a + (r.nodesCount || 8) * 47, 0);
-    const hasSocBlock = runs.some(r => r.securityEvents.some(e => e.status === 'BLOCK'));
-    const hasHipaa = runs.some(r => r.workflowSnapshot?.nodes?.some((n: any) => ['Finance','Legal','Health'].includes(n.department || n.data?.department)));
-    let riskIso = 'LOW';
-    if (runs.some(r => r.riskClassification === 'high')) riskIso = 'HIGH';
-    else if (runs.some(r => r.riskClassification === 'medium')) riskIso = 'MEDIUM';
-
-    // Inline SVG logos
-    const logoSvg = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lt" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#60A5FA"/></linearGradient><linearGradient id="lr" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#818CF8"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient><linearGradient id="lb" x1="100%" y1="0%" x2="0%" y2="0%"><stop offset="0%" stop-color="#3730A3"/><stop offset="100%" stop-color="#1E3A8A"/></linearGradient><linearGradient id="ll" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#3B82F6"/></linearGradient></defs><rect x="2" y="7" width="5.5" height="15" rx="2.75" fill="url(#ll)"/><rect x="2" y="2" width="15" height="5.5" rx="2.75" fill="url(#lt)"/><rect x="16.5" y="2" width="5.5" height="15" rx="2.75" fill="url(#lr)"/><rect x="7" y="16.5" width="15" height="5.5" rx="2.75" fill="url(#lb)"/></svg>`;
-
-    // Official Google Gemini 4-pointed sparkle logo
-    const geminiSvg = `<svg width="20" height="20" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 28C14 26.0633 13.6267 24.2433 12.88 22.54C12.1567 20.8367 11.165 19.355 9.905 18.095C8.645 16.835 7.16333 15.8433 5.46 15.12C3.75667 14.3733 1.93667 14 0 14C1.93667 14 3.75667 13.6383 5.46 12.915C7.16333 12.1683 8.645 11.165 9.905 9.905C11.165 8.645 12.1567 7.16333 12.88 5.46C13.6267 3.75667 14 1.93667 14 0C14 1.93667 14.3617 3.75667 15.085 5.46C15.8317 7.16333 16.835 8.645 18.095 9.905C19.355 11.165 20.8367 12.1683 22.54 12.915C24.2433 13.6383 26.0633 14 28 14C26.0633 14 24.2433 14.3733 22.54 15.12C20.8367 15.8433 19.355 16.835 18.095 18.095C16.835 19.355 15.8317 20.8367 15.085 22.54C14.3617 24.2433 14 26.0633 14 28Z" fill="url(#gem_g)"/><defs><radialGradient id="gem_g" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(2.77876 11.3795) rotate(18.6832) scale(29.8025 238.737)"><stop offset="0.067" stop-color="#9168C0"/><stop offset="0.343" stop-color="#5684D1"/><stop offset="0.672" stop-color="#1BA1E3"/></radialGradient></defs></svg>`;
-
-    // Official Veea stylized V swoosh logo
-    const veeaSvg = `<svg width="20" height="20" viewBox="0 0 88.8 94" xmlns="http://www.w3.org/2000/svg"><path fill="#E63030" d="M26,52.9c0,1.9,0.1,3.8,0.3,5.6L1.7,15.3c-0.9-1.6-1-3.2-0.4-4.3s2-1.8,3.9-1.8h51C50.1,11.4,44.5,15,39.6,20C30.6,29.1,26,40,26,52.9z M87.3,10c-0.9-0.5-1.6-0.8-2.9-0.8h-9.3c-11.5,0.6-21.4,5.2-29.7,13.5c-9,9-13.6,20.1-13.6,32.7c0,7.4,1.5,14.2,4.4,20.3c0.1,0.3,5.1,8.9,5.1,8.9c0.8,1.4,1.6,2.2,2.8,2.4h0.1h0.3c0.1,0,0.1,0,0.3,0H45c1.3,0,2.4-0.9,3.3-2.5l39.6-69.2c0.9-1.4,1-2.7,0.6-3.8C88.6,11.5,88.2,10.5,87.3,10z"/></svg>`;
-
-    const runsTable = runs.map(r => {
-      const outcome = r.escalationOutcome === 'none' ? 'Completed' : r.escalationOutcome;
-      const color = r.escalationOutcome === 'denied' ? '#dc2626' : r.escalationOutcome === 'approved' ? '#d97706' : '#16a34a';
-      const policy = r.escalationDetails?.policy ?? '—';
-      return `<tr>
-        <td style="color:#6366f1;font-family:monospace;font-size:11px">${r.id}</td>
-        <td><div style="font-weight:600;font-size:12px">${r.workflowName}</div><div style="color:#64748b;font-size:10px">${r.nodesCount} nodes · ${r.durationSeconds}s</div></td>
-        <td><span style="background:${color}18;color:${color};border:1px solid ${color}40;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;text-transform:uppercase">${outcome}</span></td>
-        <td style="font-size:11px;color:#92400e">${policy}</td>
-        <td style="font-size:11px;text-align:center">${r.securityEvents.filter(e => e.status === 'BLOCK').length}</td>
-      </tr>`;
-    }).join('');
-
-    const secRows = runs.flatMap(r => r.securityEvents.slice(0, 5)).slice(0, 20).map(e => {
-      const c = e.status === 'BLOCK' ? '#dc2626' : e.status === 'REVIEW' ? '#d97706' : '#16a34a';
-      return `<tr><td style="font-size:10px;font-family:monospace;color:#64748b">${e.timestamp}</td><td><span style="background:${c}18;color:${c};padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700">${e.status}</span></td><td style="font-size:10px">${e.message}</td></tr>`;
-    }).join('') || `<tr><td colspan="3" style="color:#94a3b8;font-style:italic;font-size:11px;text-align:center;padding:16px">No security events recorded.</td></tr>`;
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<title>ContextOS — Intelligence Report — ${dateStr}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Segoe UI',system-ui,sans-serif;background:#fff;color:#0f172a;font-size:12px;line-height:1.6}
-  @page{margin:2cm;size:A4}
-  @media print{.page-break{page-break-before:always}}
-  .cover{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%);color:white;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:3rem;gap:2rem}
-  .cover-logo{display:flex;align-items:center;gap:16px;margin-bottom:1rem}
-  .cover h1{font-size:42px;font-weight:800;letter-spacing:-1px;background:linear-gradient(90deg,#818cf8,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-  .cover h2{font-size:18px;font-weight:300;color:#94a3b8;letter-spacing:4px;text-transform:uppercase}
-  .cover-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:1rem;max-width:400px;width:100%}
-  .cover-meta-item{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:12px;text-align:left}
-  .cover-meta-item .label{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#64748b;margin-bottom:4px}
-  .cover-meta-item .val{font-size:16px;font-weight:700;color:white}
-  .cover-footer{display:flex;align-items:center;gap:24px;margin-top:2rem;padding-top:1.5rem;border-top:1px solid rgba(255,255,255,0.1)}
-  .cover-footer span{display:flex;align-items:center;gap:6px;font-size:10px;color:#94a3b8}
-  .section{padding:2rem;border-bottom:1px solid #e2e8f0}
-  .section-title{font-size:14px;font-weight:700;color:#1e293b;text-transform:uppercase;letter-spacing:2px;margin-bottom:1.5rem;display:flex;align-items:center;gap:8px}
-  .section-title::before{content:'';display:block;width:4px;height:16px;background:linear-gradient(to bottom,#818cf8,#4f46e5);border-radius:2px}
-  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-  .kpi{border-radius:12px;padding:16px;border:1px solid}
-  .kpi .num{font-size:28px;font-weight:800;line-height:1}
-  .kpi .label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:4px;font-weight:600}
-  .kpi-indigo{background:#eef2ff;border-color:#c7d2fe}.kpi-indigo .num{color:#4338ca}.kpi-indigo .label{color:#6366f1}
-  .kpi-blue{background:#eff6ff;border-color:#bfdbfe}.kpi-blue .num{color:#1d4ed8}.kpi-blue .label{color:#3b82f6}
-  .kpi-amber{background:#fffbeb;border-color:#fde68a}.kpi-amber .num{color:#92400e}.kpi-amber .label{color:#d97706}
-  .kpi-green{background:#f0fdf4;border-color:#bbf7d0}.kpi-green .num{color:#14532d}.kpi-green .label{color:#16a34a}
-  table{width:100%;border-collapse:collapse;font-size:11px}
-  th{background:#f8fafc;color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:10px 12px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700}
-  td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
-  tr:hover td{background:#fafafa}
-  .compliance-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-  .comp-card{border-radius:10px;padding:14px;border:1px solid;display:flex;flex-direction:column;gap:6px}
-  .comp-card .comp-label{font-size:10px;font-weight:700;color:#1e293b}
-  .comp-card .comp-status{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
-  .bar-container{height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;display:flex;margin-top:12px}
-  .bar-pass{background:#22c55e;width:82%}
-  .bar-review{background:#f59e0b;width:10%}
-  .bar-block{background:#ef4444;width:8%}
-  .footer-strip{background:#0f172a;color:white;padding:1.5rem 2rem;display:flex;align-items:center;justify-content:space-between;margin-top:2rem}
-  .footer-strip .brand{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600}
-  .footer-strip .conf{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:2px}
-</style>
-</head>
-<body>
-
-<!-- COVER PAGE -->
-<div class="cover">
-  <div class="cover-logo">
-    ${logoSvg}
-    <div>
-      <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">ContextOS</div>
-      <div style="font-size:10px;color:#64748b;letter-spacing:3px;text-transform:uppercase">Agentic Workflow Governance</div>
-    </div>
-  </div>
-  <div>
-    <div class="cover h2" style="font-size:13px;letter-spacing:5px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px">Intelligence Report</div>
-    <div class="cover h1" style="font-size:38px;font-weight:800;background:linear-gradient(90deg,#818cf8,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Agentic Governance &amp; Analytics</div>
-  </div>
-  <div class="cover-meta">
-    <div class="cover-meta-item"><div class="label">Generated</div><div class="val" style="font-size:13px">${dateStr}</div></div>
-    <div class="cover-meta-item"><div class="label">Workflow Runs</div><div class="val">${tRuns}</div></div>
-    <div class="cover-meta-item"><div class="label">Nodes Executed</div><div class="val">${tNodes}</div></div>
-    <div class="cover-meta-item"><div class="label">Risk Profile</div><div class="val" style="color:${riskIso==='HIGH'?'#ef4444':riskIso==='MEDIUM'?'#f59e0b':'#22c55e'}">${riskIso}</div></div>
-  </div>
-  <div class="cover-footer">
-    <span>${geminiSvg} Powered by Google Gemini</span>
-    <span style="color:rgba(255,255,255,0.1)">|</span>
-    <span>${veeaSvg} Veea Zero-Trust Engine</span>
-    <span style="color:rgba(255,255,255,0.1)">|</span>
-    <span style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:2px">CONFIDENTIAL · Enterprise Use Only</span>
-  </div>
-</div>
-
-<!-- PAGE 2: KPIs + Compliance -->
-<div class="page-break"></div>
-<div style="padding:2rem 2rem 0">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:1rem;border-bottom:1px solid #e2e8f0;margin-bottom:2rem">
-    <div style="display:flex;align-items:center;gap:10px">
-      ${logoSvg.replace('width="48" height="48"','width="28" height="28"')}
-      <div>
-        <div style="font-size:14px;font-weight:800;color:#0f172a">ContextOS Intelligence Report</div>
-        <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px">${dateStr} · Enterprise Governance Analytics</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:12px;align-items:center">
-      <span style="display:flex;align-items:center;gap:4px;font-size:9px;color:#4285F4;font-weight:600">${geminiSvg} Gemini AI</span>
-      <span style="display:flex;align-items:center;gap:4px;font-size:9px;color:#10b981;font-weight:600">${veeaSvg} Veea</span>
-    </div>
-  </div>
-</div>
-
-<div class="section">
-  <div class="section-title">Executive KPIs</div>
-  <div class="kpi-grid">
-    <div class="kpi kpi-indigo"><div class="num">${tRuns}</div><div class="label">Workflows Processed</div></div>
-    <div class="kpi kpi-blue"><div class="num">${tNodes}</div><div class="label">Nodes Executed</div></div>
-    <div class="kpi kpi-amber"><div class="num">${tBlocks}</div><div class="label">Violations Caught</div></div>
-    <div class="kpi kpi-green"><div class="num">$${tCost.toLocaleString()}</div><div class="label">Est. Cost Avoided</div></div>
-  </div>
-</div>
-
-<div class="section">
-  <div class="section-title">Compliance Posture</div>
-  <div class="compliance-grid">
-    <div class="comp-card" style="background:${hasSocBlock?'#fef2f2':'#f0fdf4'};border-color:${hasSocBlock?'#fecaca':'#bbf7d0'}">
-      <div class="comp-label">SOC 2 Type II</div>
-      <div class="comp-status" style="color:${hasSocBlock?'#dc2626':'#16a34a'}">${hasSocBlock?'VIOLATION':'COMPLIANT'}</div>
-    </div>
-    <div class="comp-card" style="background:${hasRedactedPII?'#f0fdf4':'#f8fafc'};border-color:${hasRedactedPII?'#bbf7d0':'#e2e8f0'}">
-      <div class="comp-label">GDPR / CCPA</div>
-      <div class="comp-status" style="color:${hasRedactedPII?'#16a34a':'#64748b'}">${hasRedactedPII?'PII REDACTED':'NO PII FOUND'}</div>
-    </div>
-    <div class="comp-card" style="background:${hasHipaa?'#eff6ff':'#f8fafc'};border-color:${hasHipaa?'#bfdbfe':'#e2e8f0'}">
-      <div class="comp-label">HIPAA / SOX</div>
-      <div class="comp-status" style="color:${hasHipaa?'#1d4ed8':'#64748b'}">${hasHipaa?'FIN/HEALTH DATA':'NOT APPLICABLE'}</div>
-    </div>
-    <div class="comp-card" style="background:${riskIso==='HIGH'?'#fef2f2':riskIso==='MEDIUM'?'#fffbeb':'#f0fdf4'};border-color:${riskIso==='HIGH'?'#fecaca':riskIso==='MEDIUM'?'#fde68a':'#bbf7d0'}">
-      <div class="comp-label">ISO 27001</div>
-      <div class="comp-status" style="color:${riskIso==='HIGH'?'#dc2626':riskIso==='MEDIUM'?'#d97706':'#16a34a'}">${riskIso} RISK</div>
-    </div>
-  </div>
-  <div style="margin-top:1rem">
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:6px"><span>Governance Coverage</span><span style="font-weight:700;color:#0f172a">92%</span></div>
-    <div class="bar-container"><div class="bar-pass"></div><div class="bar-review"></div><div class="bar-block"></div></div>
-    <div style="display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;margin-top:4px;font-family:monospace"><span>PASSED (82%)</span><span>REVIEW (10%)</span><span>BLOCKED (8%)</span></div>
-  </div>
-</div>
-
-<!-- PAGE 3: Run History -->
-<div class="page-break"></div>
-<div style="padding:2rem 2rem 0">
-  <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:1.5rem">ContextOS · Page 2 of 3</div>
-</div>
-<div class="section">
-  <div class="section-title">Execution History</div>
-  <table>
-    <thead><tr><th>Run ID</th><th>Workflow</th><th>Outcome</th><th>Policy</th><th style="text-align:center">Blocks</th></tr></thead>
-    <tbody>${runsTable || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">No runs recorded</td></tr>'}</tbody>
-  </table>
-</div>
-
-<div class="section">
-  <div class="section-title">Security Event Log</div>
-  <table>
-    <thead><tr><th>Time</th><th>Status</th><th>Event</th></tr></thead>
-    <tbody>${secRows}</tbody>
-  </table>
-</div>
-
-<div class="footer-strip">
-  <div class="brand">
-    ${logoSvg.replace('width="48" height="48"','width="20" height="20"')}
-    ContextOS · Intelligence Report · ${dateStr}
-  </div>
-  <div style="display:flex;gap:16px;align-items:center">
-    <span style="display:flex;align-items:center;gap:4px;font-size:9px;color:#4285F4">${geminiSvg} Google Gemini</span>
-    <span style="display:flex;align-items:center;gap:4px;font-size:9px;color:#10b981">${veeaSvg} Veea Zero-Trust</span>
-  </div>
-  <div class="conf">Confidential · Enterprise Use Only</div>
-</div>
-
-</body></html>`;
-
-    // Inject into a hidden off-screen container so html2canvas can paint it
-    const container = document.createElement('div');
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:960px;background:#0a0a0f;z-index:-1;';
-    container.innerHTML = html;
-    document.body.appendChild(container);
-
+    if (!reportRef.current || !heroRef.current || !metricsRef.current || !chartsRef.current || !recommendationsRef.current || !pdfHeaderRef.current) return;
+    setIsExporting(true);
+    // Add a slight delay to ensure UI is completely painted
+    await new Promise(r => setTimeout(r, 100));
     try {
-      const canvas = await html2canvas(container, {
-        scale: 2,
+      // 1. Snapshot the header
+      const headerImgData = await toJpeg(pdfHeaderRef.current, {
+        quality: 0.95,
         backgroundColor: '#0a0a0f',
-        useCORS: true,
-        allowTaint: true,
-        scrollY: 0,
-        windowWidth: 960,
-        logging: false,
+        style: { transform: 'scale(1)', transformOrigin: 'top left', width: '1000px', height: '100px' },
+        pixelRatio: 2,
+        skipFonts: true
       });
-
-      const imgData = canvas.toDataURL('image/png');
+      
+      const { default: autoTable } = await import('jspdf-autotable');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      // canvas is at scale:2, so divide by 2 for real pixel size, then convert to mm
-      const imgHeightMM = ((canvas.height / 2) / (canvas.width / 2)) * pdfWidth;
+      const margin = 12;
+      
+      const headerHeightMM = 20; // 100px mapped roughly to 20mm
+      let currentY = margin + headerHeightMM + 5;
+      
+      const drawHeader = (p: jsPDF) => {
+         p.setFillColor(10, 10, 15);
+         p.rect(0, 0, pdfWidth, pdfHeight, 'F');
+         p.addImage(headerImgData, 'JPEG', margin, margin, pdfWidth - margin * 2, headerHeightMM);
+      };
+      
+      const captureSection = async (ref: React.RefObject<HTMLDivElement>, yPos: number): Promise<number> => {
+        if (!ref.current) return yPos;
+        const imgData = await toJpeg(ref.current, {
+           quality: 0.95,
+           backgroundColor: '#0a0a0f',
+           skipFonts: true,
+           fontEmbedCSS: '',
+           pixelRatio: 2,
+           filter: (node) => !(node.hasAttribute && node.hasAttribute('data-html2canvas-ignore'))
+        });
+        const wpx = ref.current.offsetWidth;
+        const hpx = ref.current.offsetHeight;
+        const displayWidth = pdfWidth - margin * 2;
+        const displayHeight = (hpx * displayWidth) / wpx;
+        
+        if (yPos + displayHeight > pdfHeight - margin - 15) {
+           pdf.addPage();
+           drawHeader(pdf);
+           yPos = margin + headerHeightMM + 5;
+        }
+        
+        pdf.addImage(imgData, 'JPEG', margin, yPos, displayWidth, displayHeight);
+        return yPos + displayHeight + 5;
+      };
 
-      let heightLeft = imgHeightMM;
-      let position = 0;
+      // Draw first page header
+      drawHeader(pdf);
 
-      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeightMM);
-      heightLeft -= pdfHeight;
+      currentY = await captureSection(heroRef, currentY);
+      currentY = await captureSection(metricsRef, currentY);
+      currentY = await captureSection(chartsRef, currentY);
+      currentY = await captureSection(recommendationsRef, currentY);
 
-      while (heightLeft > 0) {
-        position -= pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeightMM);
-        heightLeft -= pdfHeight;
+      // Now add the table using autoTable
+      const tableData = runHistory.map(run => [
+         run.workflowName + '\\nID: ' + run.id,
+         run.nodesCount + ' Nodes | ' + run.durationSeconds + 's compute',
+         run.escalationOutcome === 'denied' ? 'BLOCKED' : run.escalationOutcome === 'approved' ? 'ESCALATED' : 'PASSED'
+      ]);
+
+      if (currentY + 20 > pdfHeight - margin - 15) {
+         pdf.addPage();
+         drawHeader(pdf);
+         currentY = margin + headerHeightMM + 5;
       }
 
-      const dateStr = new Date().toLocaleDateString('en-CA');
-      pdf.save(`ContextOS-Intelligence-Report-${dateStr}.pdf`);
+      autoTable(pdf, {
+        startY: currentY,
+        head: [['Session Trace', 'Context Flow', 'Security Posture']],
+        body: tableData,
+        theme: 'grid',
+        styles: { fillColor: [13, 13, 20], textColor: [200, 200, 200], lineColor: [40, 40, 40], fontSize: 9 },
+        headStyles: { fillColor: [20, 20, 30], textColor: [255, 255, 255], fontStyle: 'bold' },
+        margin: { left: margin, right: margin, bottom: margin + 15, top: margin + headerHeightMM + 5 },
+        willDrawPage: (data) => {
+           if (data.pageNumber > 1) {
+               drawHeader(pdf);
+           }
+        }
+      });
+      
+      // Footer text on all pages
+      const pages = (pdf.internal as any).getNumberOfPages();
+      for (let j = 1; j <= pages; j++) {
+        pdf.setPage(j);
+        pdf.setFontSize(8);
+        pdf.setTextColor(100);
+        pdf.text('CONFIDENTIAL // INTERNAL USE ONLY', margin, pdfHeight - 8);
+        pdf.text(`PAGE ${j} OF ${pages}`, pdfWidth / 2, pdfHeight - 8, { align: 'center' });
+        pdf.text('CONTEXTOS ENTERPRISE EDITION', pdfWidth - margin, pdfHeight - 8, { align: 'right' });
+      }
+
+      const dateStrFile = new Date().toLocaleDateString('en-CA');
+      pdf.save(`ContextOS-Executive-Report-${dateStrFile}.pdf`);
+    } catch (e) {
+      console.error("PDF Export failed:", e);
     } finally {
-      document.body.removeChild(container);
       setIsExporting(false);
     }
   };
-
-
 
   const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
   const [platformChatOpen, setPlatformChatOpen] = useState(false);
@@ -324,7 +195,6 @@ export function ReportPage() {
     setPlatformInput('');
     setPlatformLoading(true);
 
-    // Simulated mode
     if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
       await new Promise(r => setTimeout(r, 900));
       setPlatformMessages(prev => [...prev, { role: 'ai', text: getPlatformSimulatedResponse(question) }]);
@@ -334,27 +204,11 @@ export function ReportPage() {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'AI_STUDIO_FREE_TIER' });
-      const summaryContext = runHistory.map(r => `Run ${r.id}: ${r.workflowName}, ${r.nodesCount} nodes, ${r.riskClassification} risk, ${r.escalationOutcome} outcome, ${r.securityEvents.filter(e => e.status === 'BLOCK').length} blocks`).join('\n');
+      const summaryContext = runHistory.map(r => `Run ${r.id}: ${r.workflowName}, ${r.nodesCount} nodes, ${r.riskClassification} risk, ${r.escalationOutcome} outcome, ${r.securityEvents.filter(e => e.status === 'BLOCK').length} blocks`).join('\\n');
       incrementApiCall();
       const response = await ai.models.generateContent({
         model: aiModel || 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise workflow governance assistant.
-You have access to ${runHistory.length} workflow run(s) from this session.
-You ONLY answer questions about:
-- Workflow run history, outcomes, and analytics
-- Security events, compliance posture, and policy findings
-- Platform governance insights
-
-If the question is not directly related to these topics, respond ONLY with:
-"I can only assist with questions about workflow run history, security findings, compliance posture, and platform governance analytics."
-
-DO NOT answer general knowledge, science, history, or any topic outside enterprise workflow governance.
-Answer concisely in 3-5 sentences maximum.
-
-Run Summary:
-${summaryContext}
-
-Question: ${question}` }] }]
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence... Run Summary: ${summaryContext} Question: ${question}` }] }]
       });
       setPlatformMessages(prev => [...prev, { role: 'ai', text: response.text || 'Unable to generate answer.' }]);
     } catch (e: any) {
@@ -366,28 +220,25 @@ Question: ${question}` }] }]
 
   if (totalRuns === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 report-page bg-[#0a0a0f] text-slate-300 relative overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[#0a0a0f] text-slate-300 relative overflow-y-auto">
         <div className="absolute inset-0 bg-[#0a0a0f]" /> 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="z-10 bg-white/5 border border-white/10 rounded-2xl p-12 flex flex-col items-center text-center max-w-lg shadow-2xl backdrop-blur-md">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="z-10 bg-[#0d0d14] border border-white/5 rounded-3xl p-12 flex flex-col items-center text-center max-w-lg shadow-[0_0_80px_rgba(79,70,229,0.1)]">
           <Activity className="w-16 h-16 text-indigo-500 mb-6 animate-pulse" />
-          <h2 className="text-2xl font-bold text-white mb-2">No workflow runs recorded yet.</h2>
-          <p className="text-slate-400 mb-8">Complete a workflow execution to populate the intelligence report.</p>
-          <button onClick={() => navigate('/upload')} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 hover:shadow-indigo-500/40">
+          <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Intelligence Not Ready</h2>
+          <p className="text-slate-400 mb-8 text-sm">Execute a workflow digital twin simulation to generate the enterprise intelligence report.</p>
+          <button onClick={() => navigate('/upload')} className="flex items-center gap-2 bg-white text-black hover:bg-slate-200 px-6 py-3 rounded-full text-sm font-semibold transition-all">
             <Play className="w-4 h-4 fill-current" />
-            Run Live Demo →
+            Initialize Simulation
           </button>
         </motion.div>
       </div>
     );
   }
 
-  // Savings Math
   const [chartView, setChartView] = useState<'monthly' | 'yearly'>('monthly');
   const labels = chartView === 'monthly' ? ['Jan','Feb','Mar','Apr','May','LIVE'] : ['2020','2021','2022','2023','2024','LIVE'];
 
-  let currentCost = 0;
   const generateChartPoints = () => {
-    // seeded random
     const pts = [];
     let acc = 0;
     const multiplier = chartView === 'yearly' ? 12 : 1;
@@ -402,320 +253,388 @@ Question: ${question}` }] }]
   const cPoints = generateChartPoints();
   const maxCost = Math.max(...cPoints);
   
-  // Compliance Posture
   const hasSocBlock = runHistory.some(r => r.securityEvents.some(se => se.status === 'BLOCK'));
   const hasHipaa = runHistory.some(r => r.workflowSnapshot?.nodes?.some((n:any) => ['Finance','Legal','Health'].includes(n.department || n.data?.department)));
   let riskIso = 'LOW';
   if (runHistory.some(r => r.riskClassification === 'high')) riskIso = 'HIGH';
   else if (runHistory.some(r => r.riskClassification === 'medium')) riskIso = 'MEDIUM';
 
-  const dateStr = new Date().toLocaleDateString();
-  const timeStr = new Date().toLocaleTimeString();
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#0a0a0f] text-slate-300 report-page relative">
-      {/* Cover Page for Print */}
-      <div className="print-cover hidden print:flex print:flex-col print:h-screen print:items-center print:justify-center text-center p-12">
-        <div className="mb-12">
-          <Logo className="w-32 h-32 mx-auto text-[#0f172a]" />
-          <h1 className="mt-6 text-2xl font-bold tracking-widest uppercase" style={{ color: '#0f172a' }}>ContextOS</h1>
-        </div>
-        <div className="border-t-2 border-b-2 border-[#e2e8f0] py-12 px-6 w-full max-w-2xl mb-12">
-          <h2 className="text-4xl font-bold mb-4" style={{ color: '#0f172a' }}>INTELLIGENCE REPORT</h2>
-          <p className="text-xl text-slate-600">Agentic Workflow Governance & Analytics</p>
-        </div>
-        <div className="space-y-4 mb-24 max-w-sm mx-auto text-left w-full text-slate-600">
-          <div className="flex justify-between border-b border-slate-200 pb-2"><span>Generated:</span> <span className="font-semibold">{dateStr}</span></div>
-          <div className="flex justify-between border-b border-slate-200 pb-2"><span>Session:</span> <span className="font-semibold">{timeStr}</span></div>
-          <div className="flex justify-between border-b border-slate-200 pb-2"><span>Runs Analyzed:</span> <span className="font-semibold">{totalRuns}</span></div>
-        </div>
-        <div className="border-t border-slate-200 pt-8 w-full max-w-md mx-auto flex items-center justify-between text-sm text-slate-500">
-          <span className="font-bold">⚡ Gemini</span>
-          <span>Powered by</span>
-          <span className="font-bold">VEEA Zero-Trust Platform</span>
-        </div>
-        <div className="mt-16 text-xs text-slate-400 font-mono">CONFIDENTIAL — Enterprise Use Only</div>
-      </div>
-
-      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8 page-break-before">
-        {/* Header */}
-        <div className="flex items-center justify-between no-print">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-              <Logo className="w-8 h-8" />
-              Intelligence Report
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">Real-time Session Analytics · Veea Governance Engine · Powered by Gemini</p>
-          </div>
-          <button onClick={handleExport} disabled={isExporting} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-md flex items-center gap-2 transition-all">
-            {isExporting ? <SpinnerIcon className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-            <span className="hidden sm:inline">{isExporting ? 'GENERATING...' : 'EXPORT PDF'}</span>
-          </button>
-        </div>
-
-        {/* KPI Hero */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:grid-cols-2 print:gap-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }} className="bg-indigo-500/10 border border-indigo-500/20 p-5 rounded-2xl print-only-bg">
-             <div className="text-3xl font-bold text-indigo-400 print:text-slate-800">{totalRuns}</div>
-             <div className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Workflows Processed</div>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-blue-500/10 border border-blue-500/20 p-5 rounded-2xl print-only-bg">
-             <div className="text-3xl font-bold text-blue-400 print:text-slate-800">{totalNodesExecuted}</div>
-             <div className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Nodes Executed</div>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-amber-500/10 border border-amber-500/20 p-5 rounded-2xl print-only-bg">
-             <div className="text-3xl font-bold text-amber-400 print:text-slate-800">{totalBlocks}</div>
-             <div className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Violations Caught</div>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl print-only-bg">
-             <div className="text-3xl font-bold text-emerald-400 print:text-slate-800">${costAvoided.toLocaleString()}</div>
-             <div className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Est. Cost Avoided</div>
-          </motion.div>
-        </div>
-
-        {/* SVG Chart */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 print-only-bg">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-sm font-semibold text-white print:text-slate-900">Savings & ROI Projection</h3>
-            <div className="flex gap-1 bg-black/20 p-1 rounded-lg no-print">
-              <button onClick={() => setChartView('monthly')} className={cn("text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded transition-colors", chartView === 'monthly' ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>Monthly</button>
-              <button onClick={() => setChartView('yearly')} className={cn("text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded transition-colors", chartView === 'yearly' ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>Yearly</button>
-            </div>
-          </div>
-          <div className="w-full h-[220px] relative">
-            <svg viewBox="0 0 800 220" className="w-full h-full overflow-visible text-white">
-              <defs>
-                <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {/* Grid lines */}
-              {[4, 3, 2, 1, 0].map((t, i) => (
-                <g key={i}>
-                  <line x1="40" y1={i * 45 + 10} x2="780" y2={i * 45 + 10} stroke="currentColor" strokeOpacity="0.1" strokeWidth="1" strokeDasharray="4 4" />
-                  <text x="30" y={i * 45 + 15} fontSize="10" fill="currentColor" fillOpacity="0.5" textAnchor="end">${Math.round((maxCost * (t/4))/1000)}k</text>
-                </g>
-              ))}
-              {/* X Axis */}
-              {labels.map((m, i) => {
-                const isLive = m === 'LIVE';
-                return (
-                  <text key={m} x={50 + i * (730/5)} y="210" fontSize="10" fill={isLive ? "#10b981" : "currentColor"} fillOpacity="0.5" textAnchor="middle" fontWeight={isLive ? "bold" : "normal"}>{m}</text>
-                );
-              })}
-              {/* Path calculation */}
-              <path 
-                d={`M 50 ${190 - (cPoints[0]/maxCost)*180} ${cPoints.map((p, i) => {
-                  if (i === 0) return '';
-                  const prevX = 50 + (i-1) * (730/5);
-                  const prevY = 190 - (cPoints[i-1]/maxCost)*180;
-                  const x = 50 + i * (730/5);
-                  const y = 190 - (p/maxCost)*180;
-                  const cx1 = prevX + (x - prevX)/2;
-                  return `C ${cx1} ${prevY}, ${cx1} ${y}, ${x} ${y}`;
-                }).join(' ')}`}
-                fill="none" stroke="#10b981" strokeWidth="3"
-              />
-              <path 
-                d={`M 50 ${190 - (cPoints[0]/maxCost)*180} ${cPoints.map((p, i) => {
-                  if (i === 0) return '';
-                  const prevX = 50 + (i-1) * (730/5);
-                  const prevY = 190 - (cPoints[i-1]/maxCost)*180;
-                  const x = 50 + i * (730/5);
-                  const y = 190 - (p/maxCost)*180;
-                  const cx1 = prevX + (x - prevX)/2;
-                  return `C ${cx1} ${prevY}, ${cx1} ${y}, ${x} ${y}`;
-                }).join(' ')} L 780 190 L 50 190 Z`}
-                fill="url(#emeraldGrad)"
-              />
-              {/* Live Dot */}
-              <circle cx={780} cy={190 - (cPoints[5]/maxCost)*180} r="6" fill="#10b981" className="animate-pulse shadow-[0_0_15px_#10b981]" />
-            </svg>
-          </div>
-        </div>
-
-        <div className="page-break-before" />
-
-        {/* Compliance Posture */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 print-only-bg">
-          <h3 className="text-sm font-semibold text-white mb-6 print:text-slate-900 border-b border-white/10 pb-4">Compliance Posture</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {/* SOC 2 */}
-            <div className={cn("p-4 rounded-xl border flex flex-col gap-2", hasSocBlock ? "bg-red-500/10 border-red-500/20" : "bg-emerald-500/10 border-emerald-500/20")}>
-              <div className="flex justify-between items-center">
-                 <span className="text-xs font-bold text-slate-300">SOC 2 Type II</span>
-                 {hasSocBlock ? <X className="w-4 h-4 text-red-500" /> : <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-              </div>
-              <div className={cn("text-xs", hasSocBlock ? "text-red-400" : "text-emerald-400")}>{hasSocBlock ? "VIOLATION DETECTED" : "COMPLIANT"}</div>
-            </div>
-            {/* GDPR */}
-             <div className={cn("p-4 rounded-xl border flex flex-col gap-2", hasRedactedPII ? "bg-emerald-500/10 border-emerald-500/20" : "bg-slate-500/10 border-slate-500/20")}>
-              <div className="flex justify-between items-center">
-                 <span className="text-xs font-bold text-slate-300">GDPR / CCPA</span>
-                 {hasRedactedPII ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <ShieldAlert className="w-4 h-4 text-slate-500" />}
-              </div>
-              <div className={cn("text-xs", hasRedactedPII ? "text-emerald-400" : "text-slate-400")}>{hasRedactedPII ? "PII REDACTED" : "NO PII DETECTED"}</div>
-            </div>
-            {/* HIPAA/SOX */}
-             <div className={cn("p-4 rounded-xl border flex flex-col gap-2", hasHipaa ? "bg-indigo-500/10 border-indigo-500/20" : "bg-slate-500/10 border-slate-500/20")}>
-              <div className="flex justify-between items-center">
-                 <span className="text-xs font-bold text-slate-300">HIPAA / SOX</span>
-                 {hasHipaa ? <AlertTriangle className="w-4 h-4 text-indigo-500" /> : <ShieldAlert className="w-4 h-4 text-slate-500" />}
-              </div>
-              <div className={cn("text-xs", hasHipaa ? "text-indigo-400" : "text-slate-400")}>{hasHipaa ? "FIN/HEALTH DATA" : "NOT APPLICABLE"}</div>
-            </div>
-            {/* ISO 27001 */}
-             <div className={cn("p-4 rounded-xl border flex flex-col gap-2", riskIso==='HIGH'?"bg-red-500/10 border-red-500/20":riskIso==='MEDIUM'?"bg-amber-500/10 border-amber-500/20":"bg-emerald-500/10 border-emerald-500/20")}>
-              <div className="flex justify-between items-center">
-                 <span className="text-xs font-bold text-slate-300">ISO 27001</span>
-                 <AlertCircle className={cn("w-4 h-4", riskIso==='HIGH'?"text-red-500":riskIso==='MEDIUM'?"text-amber-500":"text-emerald-500")} />
-              </div>
-              <div className={cn("text-xs", riskIso==='HIGH'?"text-red-400":riskIso==='MEDIUM'?"text-amber-400":"text-emerald-400")}>{riskIso} RISK PROFILE</div>
-            </div>
-          </div>
-          
-          <div className="flex justify-between text-xs font-medium text-slate-400 mb-2">
-            <span>Governance Coverage</span>
-            <span className="text-slate-300">92%</span>
-          </div>
-          <div className="h-4 flex rounded-full overflow-hidden border border-white/10">
-            <motion.div initial={{width:0}} animate={{width:'82%'}} className="bg-emerald-500/80" />
-            <motion.div initial={{width:0}} animate={{width:'10%'}} className="bg-amber-500/80 border-l border-white/20" />
-            <motion.div initial={{width:0}} animate={{width:'8%'}} className="bg-red-500/80 border-l border-white/20" />
-          </div>
-          <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2">
-            <span>PASSED (82%)</span>
-            <span>REVIEW (10%)</span>
-            <span>BLOCKED (8%)</span>
-          </div>
-        </div>
-
-        {/* Runs Table */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden print-only-bg">
-          <div className="p-4 border-b border-white/10">
-            <h3 className="text-sm font-semibold text-white print:text-slate-900">Execution History</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead>
-                <tr className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-white/10">
-                  <th className="p-4 font-normal">Run ID</th>
-                  <th className="p-4 font-normal">Workflow</th>
-                  <th className="p-4 font-normal">Outcome</th>
-                  <th className="p-4 font-normal">Escalation</th>
-                  <th className="p-4 font-normal text-right no-print">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {runHistory.map(run => (
-                  <tr key={run.id} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="p-4 font-mono text-xs text-indigo-400 print:text-slate-700">{run.id}</td>
-                    <td className="p-4 max-w-[200px] truncate text-slate-200 print:text-slate-900">
-                      <div className="font-medium">{run.workflowName}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{run.nodesCount} nodes · {run.durationSeconds}s</div>
-                    </td>
-                    <td className="p-4">
-                      <span className={cn("inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                        run.escalationOutcome === 'denied' ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                        run.escalationOutcome === 'approved' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                        "bg-green-500/10 text-green-400 border-green-500/20"
-                      )}>
-                        {run.escalationOutcome === 'denied' ? <X className="w-3 h-3" /> :
-                         run.escalationOutcome === 'approved' ? <AlertTriangle className="w-3 h-3" /> :
-                         <CheckCircle2 className="w-3 h-3" />}
-                        {run.escalationOutcome === 'none' ? 'Completed' : run.escalationOutcome}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      {run.escalationDetails ? (
-                        <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
-                          {run.escalationDetails.policy}
-                        </span>
-                      ) : (
-                        <span className="text-slate-600">—</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-right no-print">
-                      <button onClick={() => setSelectedRun(run)} className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors font-medium">
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Global Chat */}
-        <div className="border border-white/10 rounded-2xl bg-black/40 overflow-hidden no-print print:hidden page-break-avoid">
-          <div className="flex items-center justify-between p-4 border-b border-white/10 bg-indigo-500/5">
-            <div className="flex items-center gap-3">
-               <Bot className="w-5 h-5 text-indigo-400" />
+    <div className="flex-1 bg-[#0a0a0f] text-slate-300 relative font-sans overflow-x-hidden">
+      
+      {/* Hidden PDF Elements */}
+      <div style={{ position: 'fixed', top: '-10000px', left: '-10000px', width: '1000px', zIndex: -1 }}>
+         <div ref={pdfHeaderRef} className="bg-[#0a0a0f] p-8 border-b border-indigo-500/20 flex justify-between items-center text-white font-sans h-[100px]" style={{ fontFamily: 'Inter, sans-serif' }}>
+            <div className="flex items-center gap-4">
+               <div className="flex items-center justify-center w-12 h-12 bg-indigo-500/20 border border-indigo-500/30 rounded-xl">
+                 <Logo className="w-6 h-6" />
+               </div>
                <div>
-                 <h3 className="text-sm font-semibold text-white">Platform Intelligence</h3>
-                 <p className="text-[10px] text-slate-400">Ask anything across all workflow runs this session</p>
+                  <div className="font-bold text-2xl tracking-tight leading-none mb-1 text-white">ContextOS</div>
+                  <div className="text-[11px] text-slate-400 uppercase tracking-[0.2em] font-medium">Executive Intelligence</div>
                </div>
             </div>
-            <button onClick={() => setPlatformChatOpen(!platformChatOpen)} className="text-xs bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg text-white font-medium transition-colors">
-              {platformChatOpen ? 'Collapse ↕' : 'Expand ↕'}
-            </button>
-          </div>
-          <AnimatePresence>
-            {platformChatOpen && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-white/5">
-                <div className="p-4 flex flex-col h-[300px]">
-                  <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
-                    {platformMessages.length === 0 && (
-                      <div className="flex flex-wrap gap-2 justify-center mt-10">
-                        {['Which workflow had most policy violations?', 'Average automation coverage?', 'Summarize security posture', 'Find the riskiest run'].map(q => (
-                          <button key={q} onClick={() => askPlatform(q)} className="text-[11px] bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 rounded-full text-slate-300 transition-colors">{q}</button>
-                        ))}
-                      </div>
-                    )}
-                    {platformMessages.map((msg, idx) => (
-                      <div key={idx} className={cn("flex flex-col gap-1 max-w-[85%]", msg.role==='user'?"items-end self-end ml-auto":"items-start self-start")}>
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{msg.role === 'user' ? 'You' : '⚡ Platform Intelligence'}</span>
-                        <div className={cn("text-[12px] leading-relaxed p-3 rounded-2xl", msg.role==='user'?"bg-indigo-600 text-white":"bg-white/10 border border-white/10 text-slate-200")}>
-                          {msg.text}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="relative">
-                    <input 
-                      value={platformInput}
-                      onChange={e => setPlatformInput(e.target.value)}
-                      onKeyDown={e => { if(e.key==='Enter' && !platformLoading) askPlatform(platformInput) }}
-                      placeholder="Ask the platform..."
-                      className="w-full bg-[#12121a] border border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
-                    />
-                    <button disabled={platformLoading || !platformInput.trim()} onClick={() => askPlatform(platformInput)} className="absolute right-2 top-1.5 bottom-1.5 w-10 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 flex items-center justify-center rounded-lg transition-colors">
-                       {platformLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-4 h-4 text-white" />}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            <div className="flex items-center gap-8">
+               <div className="flex items-center gap-3">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block text-right mt-1">Secured By</span>
+                  <img src={veeaLogo} className="w-6 h-6 filter grayscale invert brightness-200 opacity-80" />
+               </div>
+               <div className="w-px h-8 bg-white/10"></div>
+               <div className="flex items-center gap-3">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block text-right mt-1">Intelligence</span>
+                  <img src={geminiLogo} className="w-6 h-6" />
+               </div>
+            </div>
+         </div>
+      </div>
+      <div className="sticky top-0 z-40 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center no-print border-t border-white/5">
+        <div className="flex items-center gap-3">
+           <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+              <Logo className="w-5 h-5" />
+           </div>
+           <div>
+             <h1 className="text-sm font-semibold text-white tracking-tight">Executive Intelligence Report</h1>
+             <p className="text-[10px] text-slate-500 font-mono">ID: CX-REP-{Math.floor(Math.random()*10000).toString().padStart(4,'0')} • {dateStr}</p>
+           </div>
+        </div>
+        <div className="flex items-center gap-3">
+           <button onClick={handleExport} disabled={isExporting} className="bg-white hover:bg-slate-200 text-black px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 transition-colors disabled:opacity-50 shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+             {isExporting ? <SpinnerIcon className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+             {isExporting ? 'Generating PDF...' : 'Export PDF'}
+           </button>
         </div>
       </div>
 
-      {/* Modal - Render conditionally so it cleans up when closed */}
+      <div className="max-w-[1400px] mx-auto p-4 md:p-8 lg:p-12 space-y-12" ref={reportRef}>
+        
+        <div ref={heroRef} className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0d0d14] p-8 md:p-12">
+           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50" />
+           <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
+           <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none" />
+           
+           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start gap-8">
+              <div className="max-w-2xl">
+                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] uppercase font-bold tracking-widest text-slate-300 mb-6">
+                    <img src={geminiLogo} alt="Gemini" className="w-3 h-3" />
+                    AI-Authored Observation
+                 </div>
+                 <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight leading-tight mb-4 text-balance">
+                    Operational Intelligence & <br/>Governance Summary
+                 </h1>
+                 <p className="text-slate-400 text-sm md:text-base leading-relaxed text-balance">
+                    Executive overview of automated workflow executions, intercepted policy violations, and systemic risk analysis generated by the ContextOS orchestration engine.
+                 </p>
+              </div>
+              <div className="shrink-0 flex flex-col gap-4 bg-black/40 backdrop-blur-md border border-white/5 p-6 rounded-2xl min-w-[280px]">
+                 <div>
+                   <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Generated At</div>
+                   <div className="text-sm text-white font-mono">{dateStr} {timeStr}</div>
+                 </div>
+                 <div>
+                   <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Security Enforcement</div>
+                   <div className="flex items-center gap-2 text-sm text-white font-mono">
+                      <img src={veeaLogo} alt="Veea" className="w-4 h-4 opacity-70 filter invert grayscale brightness-200 contrast-200 mix-blend-screen" />
+                      Veea Boundary Active
+                   </div>
+                 </div>
+                 <div className="pt-4 border-t border-white/10">
+                   <div className="flex items-center justify-between">
+                     <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Overall Risk Iso</span>
+                     <span className={cn("text-xs font-bold px-2 py-0.5 rounded", riskIso==='HIGH'?'bg-rose-500/20 text-rose-400':riskIso==='MEDIUM'?'bg-amber-500/20 text-amber-400':'bg-emerald-500/20 text-emerald-400')}>{riskIso}</span>
+                   </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div ref={metricsRef}>
+          <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-400" /> Executive Metrics</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-[#0d0d14] border border-white/5 p-6 rounded-2xl flex flex-col relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors" />
+               <Activity className="w-5 h-5 text-indigo-500/70 mb-4" />
+               <div className="text-3xl font-bold text-white tracking-tight">{totalRuns}</div>
+               <div className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-semibold">Simulations Run</div>
+            </motion.div>
+            
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-[#0d0d14] border border-white/5 p-6 rounded-2xl flex flex-col relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+               <Layers className="w-5 h-5 text-emerald-500/70 mb-4" />
+               <div className="text-3xl font-bold text-white tracking-tight">{totalNodesExecuted}</div>
+               <div className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-semibold">Nodes Orchestrated</div>
+            </motion.div>
+            
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-[#0d0d14] border border-white/5 p-6 rounded-2xl flex flex-col relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+               <Lock className="w-5 h-5 text-amber-500/70 mb-4" />
+               <div className="text-3xl font-bold text-white tracking-tight">{totalBlocks}</div>
+               <div className="text-[11px] text-slate-500 mt-1 uppercase tracking-widest font-semibold">Policy Intercepts</div>
+            </motion.div>
+            
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-[#0d0d14] border border-emerald-500/20 p-6 rounded-2xl flex flex-col relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-colors" />
+               <Zap className="w-5 h-5 text-emerald-400 mb-4" />
+               <div className="text-3xl font-bold text-emerald-400 tracking-tight">${costAvoided.toLocaleString()}</div>
+               <div className="text-[11px] text-emerald-500/70 mt-1 uppercase tracking-widest font-semibold">Est. Capital Preserved</div>
+            </motion.div>
+          </div>
+        </div>
+
+        <div ref={chartsRef} className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+           <div className="bg-[#0d0d14] border border-white/5 rounded-3xl p-8 flex flex-col">
+              <div className="flex justify-between items-start mb-8">
+                 <div>
+                   <h3 className="text-base font-bold text-white">Efficiency Forecasting</h3>
+                   <p className="text-xs text-slate-500 mt-1">Projected operational cost savings over time.</p>
+                 </div>
+                 <div className="flex bg-black/40 p-1 rounded-lg border border-white/5" data-html2canvas-ignore>
+                   <button onClick={() => setChartView('monthly')} className={cn("text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md transition-all", chartView === 'monthly' ? "bg-white/10 text-white shadow-sm" : "text-slate-500 hover:text-slate-300")}>Monthly</button>
+                   <button onClick={() => setChartView('yearly')} className={cn("text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md transition-all", chartView === 'yearly' ? "bg-white/10 text-white shadow-sm" : "text-slate-500 hover:text-slate-300")}>Yearly</button>
+                 </div>
+              </div>
+              <div className="flex-1 w-full relative min-h-[200px] mt-auto">
+                <svg viewBox="0 0 800 220" className="w-full h-full overflow-visible text-slate-300">
+                  <defs>
+                    <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  {[4, 3, 2, 1, 0].map((t, i) => (
+                    <g key={i}>
+                      <line x1="40" y1={i * 45 + 10} x2="780" y2={i * 45 + 10} stroke="currentColor" strokeOpacity="0.05" strokeWidth="1" strokeDasharray="4 4" />
+                      <text x="30" y={i * 45 + 14} fontSize="10" fill="currentColor" fillOpacity="0.4" textAnchor="end" fontFamily="monospace">${Math.round((maxCost * (t/4))/1000)}k</text>
+                    </g>
+                  ))}
+                  {labels.map((m, i) => {
+                    const isLive = m === 'LIVE';
+                    return (
+                      <text key={m} x={50 + i * (730/5)} y="215" fontSize="10" fill={isLive ? "#10b981" : "currentColor"} fillOpacity={isLive?1:0.4} textAnchor="middle" fontWeight={isLive ? "bold" : "normal"} fontFamily="monospace">{m}</text>
+                    );
+                  })}
+                  <path 
+                    d={`M 50 ${190 - (cPoints[0]/maxCost)*180} ${cPoints.map((p, i) => {
+                      if (i === 0) return '';
+                      const prevX = 50 + (i-1) * (730/5);
+                      const prevY = 190 - (cPoints[i-1]/maxCost)*180;
+                      const x = 50 + i * (730/5);
+                      const y = 190 - (p/maxCost)*180;
+                      const cx1 = prevX + (x - prevX)/2;
+                      return `C ${cx1} ${prevY}, ${cx1} ${y}, ${x} ${y}`;
+                    }).join(' ')}`}
+                    fill="none" stroke="#10b981" strokeWidth="2"
+                  />
+                  <path 
+                    d={`M 50 ${190 - (cPoints[0]/maxCost)*180} ${cPoints.map((p, i) => {
+                      if (i === 0) return '';
+                      const prevX = 50 + (i-1) * (730/5);
+                      const prevY = 190 - (cPoints[i-1]/maxCost)*180;
+                      const x = 50 + i * (730/5);
+                      const y = 190 - (p/maxCost)*180;
+                      const cx1 = prevX + (x - prevX)/2;
+                      return `C ${cx1} ${prevY}, ${cx1} ${y}, ${x} ${y}`;
+                    }).join(' ')} L 780 190 L 50 190 Z`}
+                    fill="url(#emeraldGrad)"
+                  />
+                  <circle cx={780} cy={190 - (cPoints[5]/maxCost)*180} r="4" fill="#10b981" className="shadow-[0_0_10px_#10b981]" />
+                </svg>
+              </div>
+           </div>
+
+           <div className="bg-[#0d0d14] border border-white/5 rounded-3xl p-8 flex flex-col">
+              <div className="flex justify-between items-start mb-8">
+                 <div>
+                   <h3 className="text-base font-bold text-white">Compliance Posture</h3>
+                   <p className="text-xs text-slate-500 mt-1">Regulatory validation of autonomous actions.</p>
+                 </div>
+                 <ShieldAlert className="w-5 h-5 text-slate-600" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                 <div className={cn("p-4 rounded-2xl border flex items-center justify-between", hasSocBlock ? "bg-rose-500/5 border-rose-500/20" : "bg-emerald-500/5 border-emerald-500/20")}>
+                    <div>
+                      <div className="text-xs font-bold text-white mb-1">SOC 2 Type II</div>
+                      <div className={cn("text-[10px] font-mono", hasSocBlock ? "text-rose-400" : "text-emerald-400")}>{hasSocBlock ? "VIOLATION" : "COMPLIANT"}</div>
+                    </div>
+                    {hasSocBlock ? <Lock className="w-5 h-5 text-rose-500/50" /> : <CheckCircle2 className="w-5 h-5 text-emerald-500/50" />}
+                 </div>
+                 <div className={cn("p-4 rounded-2xl border flex items-center justify-between", hasRedactedPII ? "bg-emerald-500/5 border-emerald-500/20" : "bg-slate-500/10 border-slate-500/10")}>
+                    <div>
+                      <div className="text-xs font-bold text-white mb-1">GDPR / CCPA</div>
+                      <div className={cn("text-[10px] font-mono", hasRedactedPII ? "text-emerald-400" : "text-slate-400")}>{hasRedactedPII ? "PII REDACTED" : "NO PII"}</div>
+                    </div>
+                    {hasRedactedPII ? <CheckCircle2 className="w-5 h-5 text-emerald-500/50" /> : <Map className="w-5 h-5 text-slate-600" />}
+                 </div>
+                 <div className={cn("p-4 rounded-2xl border flex items-center justify-between", hasHipaa ? "bg-indigo-500/5 border-indigo-500/20" : "bg-slate-500/10 border-slate-500/10")}>
+                    <div>
+                      <div className="text-xs font-bold text-white mb-1">HIPAA / SOX</div>
+                      <div className={cn("text-[10px] font-mono", hasHipaa ? "text-indigo-400" : "text-slate-400")}>{hasHipaa ? "SENSITIVE DATA" : "N/A"}</div>
+                    </div>
+                    {hasHipaa ? <AlertTriangle className="w-5 h-5 text-indigo-500/50" /> : <FileText className="w-5 h-5 text-slate-600" />}
+                 </div>
+                 <div className={cn("p-4 rounded-2xl border flex items-center justify-between", riskIso==='HIGH'?"bg-rose-500/5 border-rose-500/20":riskIso==='MEDIUM'?"bg-amber-500/5 border-amber-500/20":"bg-emerald-500/5 border-emerald-500/20")}>
+                    <div>
+                      <div className="text-xs font-bold text-white mb-1">ISO 27001</div>
+                      <div className={cn("text-[10px] font-mono", riskIso==='HIGH'?"text-rose-400":riskIso==='MEDIUM'?"text-amber-400":"text-emerald-400")}>{riskIso} RISK</div>
+                    </div>
+                    <ShieldAlert className={cn("w-5 h-5", riskIso==='HIGH'?"text-rose-500/50":riskIso==='MEDIUM'?"text-amber-500/50":"text-emerald-500/50")} />
+                 </div>
+              </div>
+              
+              <div className="mt-auto">
+                 <div className="flex justify-between text-xs font-semibold text-slate-300 mb-3">
+                   <span>Enterprise Governance Coverage</span>
+                   <span>92%</span>
+                 </div>
+                 <div className="h-3 flex rounded-full overflow-hidden border border-white/5 bg-black/50">
+                   <motion.div initial={{width:0}} animate={{width:'82%'}} className="bg-emerald-500" />
+                   <motion.div initial={{width:0}} animate={{width:'10%'}} className="bg-amber-500" />
+                   <motion.div initial={{width:0}} animate={{width:'8%'}} className="bg-rose-500" />
+                 </div>
+                 <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-3">
+                   <span className="text-emerald-500/80">PASSED (82%)</span>
+                   <span className="text-amber-500/80">REVIEW (10%)</span>
+                   <span className="text-rose-500/80">BLOCKED (8%)</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div ref={recommendationsRef} className="bg-gradient-to-r from-indigo-500/10 to-teal-500/5 border border-indigo-500/20 p-8 md:p-10 rounded-3xl relative overflow-hidden">
+           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent" />
+           <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-teal-400" /> Executive Recommendations</h3>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { title: 'Harden Slack Integrations', desc: 'Recent blocks indicate excessive PII sharing through notification channels. Limit payload verbosity.', type: 'security' },
+                { title: 'Review Legal Escalations', desc: 'High frequency of manual approvals in Legal steps. Consider refining zero-trust boundary limits.', type: 'process' },
+                { title: 'Expand Governance Envelope', desc: 'Onboard remaining HR workflows into ContextOS to achieve 100% visibility of automated offboarding.', type: 'growth' }
+              ].map((rec, i) => (
+                <div key={i} className="bg-white/5 border border-white/10 p-5 rounded-2xl">
+                   <div className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">{rec.type}</div>
+                   <div className="text-sm font-semibold text-white mb-2">{rec.title}</div>
+                   <div className="text-xs text-slate-400 leading-relaxed">{rec.desc}</div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        <div className="pb-24">
+           <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><Network className="w-5 h-5 text-indigo-400" /> Multi-Agent Execution Trace</h2>
+           <div className="bg-[#0d0d14] border border-white/5 rounded-3xl overflow-hidden">
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm whitespace-nowrap">
+                 <thead>
+                   <tr className="bg-white/[0.04] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-white/5">
+                     <th className="px-6 py-5 font-normal border-r border-white/5">Session Trace</th>
+                     <th className="px-6 py-5 font-normal border-r border-white/5">Context Flow</th>
+                     <th className="px-6 py-5 font-normal">Security Posture</th>
+                     <th className="px-6 py-5 font-normal text-right no-print" data-html2canvas-ignore>Inspection</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-white/5">
+                   {runHistory.map(run => (
+                     <tr key={run.id} className="hover:bg-white/[0.02] transition-colors group">
+                       <td className="px-6 py-5 border-r border-white/5">
+                         <div className="font-semibold text-white">{run.workflowName}</div>
+                         <div className="text-[10px] text-slate-500 font-mono mt-1">ID: {run.id}</div>
+                       </td>
+                       <td className="px-6 py-5 border-r border-white/5">
+                         <div className="text-sm text-slate-300">{run.nodesCount} Nodes Orchestrated</div>
+                         <div className="text-[10px] text-slate-500 mt-1">{run.durationSeconds}s compute · {run.completedSteps.length} successful</div>
+                       </td>
+                       <td className="px-6 py-5">
+                         <span className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider border",
+                           run.escalationOutcome === 'denied' ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                           run.escalationOutcome === 'approved' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                           "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                         )}>
+                           {run.escalationOutcome === 'denied' ? <X className="w-3 h-3" /> :
+                            run.escalationOutcome === 'approved' ? <AlertTriangle className="w-3 h-3" /> :
+                            <CheckCircle2 className="w-3 h-3" />}
+                           {run.escalationOutcome === 'none' ? 'Enclave Passed' : run.escalationOutcome}
+                         </span>
+                       </td>
+                       <td className="px-6 py-5 text-right no-print" data-html2canvas-ignore>
+                         <button onClick={() => setSelectedRun(run)} className="text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-white px-4 py-2 rounded-lg transition-colors font-medium opacity-0 group-hover:opacity-100">
+                           Analyze Trace
+                         </button>
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+           </div>
+        </div>
+      </div>
+
+      {/* Platform Chat (Floating Bubble) */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end no-print">
+        <AnimatePresence>
+          {platformChatOpen && (
+            <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="bg-[#0d0d14] border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(79,70,229,0.15)] w-[380px] mb-4 overflow-hidden flex flex-col h-[450px]">
+               <div className="p-4 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+                 <div className="flex items-center gap-2 text-white font-bold text-sm tracking-tight">
+                   <Bot className="w-5 h-5 text-indigo-400" />
+                   ContextOS Intelligence
+                 </div>
+                 <button onClick={() => setPlatformChatOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+               </div>
+               <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                 {platformMessages.length === 0 && (
+                   <div className="text-center mt-12">
+                     <Bot className="w-10 h-10 text-slate-700 mx-auto mb-4" />
+                     <p className="text-slate-400 text-xs text-balance">
+                       Ask questions about compliance trends, risk posture, or blocked instances.
+                     </p>
+                   </div>
+                 )}
+                 {platformMessages.map((m, i) => (
+                   <div key={i} className={cn("flex flex-col max-w-[85%]", m.role==='user'?"items-end self-end":"items-start self-start")}>
+                      <div className={cn("p-3 rounded-2xl text-sm leading-relaxed", m.role==='user'?"bg-indigo-600 text-white rounded-br-sm":"bg-white/10 text-slate-200 rounded-bl-sm")}>{m.text}</div>
+                   </div>
+                 ))}
+                 {platformLoading && (
+                   <div className="flex items-center gap-2 text-xs text-slate-500">
+                     <SpinnerIcon className="w-3 h-3 animate-spin" /> Synthesizing...
+                   </div>
+                 )}
+               </div>
+               <div className="p-3 border-t border-white/5 bg-black/40">
+                 <div className="relative">
+                   <input 
+                     value={platformInput} onChange={e => setPlatformInput(e.target.value)}
+                     onKeyDown={e => { if(e.key === 'Enter') askPlatform(platformInput) }}
+                     placeholder="Query enterprise intelligence..."
+                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50"
+                   />
+                   <button onClick={() => askPlatform(platformInput)} disabled={platformLoading || !platformInput.trim()} className="absolute right-2 top-2 bottom-2 w-9 flex items-center justify-center bg-white text-black hover:bg-slate-200 rounded-lg disabled:opacity-50 transition-colors">
+                     <Send className="w-4 h-4 ml-0.5" />
+                   </button>
+                 </div>
+               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {!platformChatOpen && (
+          <button onClick={() => setPlatformChatOpen(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white p-4 rounded-full shadow-[0_0_30px_rgba(79,70,229,0.3)] flex items-center justify-center transition-transform hover:scale-105 active:scale-95 group border border-indigo-400/30">
+            <Bot className="w-6 h-6 group-hover:animate-pulse" />
+          </button>
+        )}
+      </div>
+
       {selectedRun && (
-        <RunDetailModal run={selectedRun} onClose={() => setSelectedRun(null)} />
+        <RunDetailModal run={selectedRun} onClose={() => setSelectedRun(null)} aiModel={aiModel} />
       )}
     </div>
   );
 }
 
-// Subcomponent in same file
-function RunDetailModal({ run, onClose }: { run: RunRecord, onClose: () => void }) {
-  const { aiModel } = useStore(); // inherit selected model from global store
+function RunDetailModal({ run, onClose, aiModel }: { run: RunRecord, onClose: () => void, aiModel: string }) {
   const [tab, setTab] = useState<'graph'|'exec'|'agent'|'chat'>('graph');
   
-  // Quick map nodes/edges for read-only preview
   const previewNodes = useMemo(() => {
     if (!run.workflowSnapshot?.nodes) return [];
     const layout = applyWorkflowLayout(run.workflowSnapshot.nodes, run.workflowSnapshot.edges || []);
@@ -723,7 +642,6 @@ function RunDetailModal({ run, onClose }: { run: RunRecord, onClose: () => void 
       ...n,
       data: {
          ...n.data,
-         // We can force status styles on the node
          status: run.completedSteps.includes(n.id) ? 'completed' : run.failedSteps.includes(n.id) ? 'error' : 'idle'
       }
     }));
@@ -740,7 +658,6 @@ function RunDetailModal({ run, onClose }: { run: RunRecord, onClose: () => void 
     setChatInput('');
     setChatLoading(true);
 
-    // Simulated mode
     if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
       await new Promise(r => setTimeout(r, 900));
       setChatMessages(prev => [...prev, { role: 'ai', text: getRunDetailSimulatedResponse(q) }]);
@@ -758,21 +675,7 @@ Logs: ${run.executionLogs.slice(-10).map(x=>x.message).join(' | ')}`;
       incrementApiCall();
       const response = await ai.models.generateContent({
         model: aiModel || 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise workflow governance assistant.
-You ONLY answer questions about:
-- This specific workflow run: its steps, risk level, escalation outcome, and security events
-- Compliance findings and policy violations from this run
-
-If the question is not directly related to these topics, respond ONLY with:
-"I can only assist with questions about this workflow run's execution, security posture, and governance findings."
-
-DO NOT answer general knowledge or any topic outside this workflow run.
-Answer concisely in 2-4 sentences max.
-
-Context:
-${context}
-
-Question: ${q}` }] }]
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence... Context: ${context} Question: ${q}` }] }]
       });
       setChatMessages(prev => [...prev, { role: 'ai', text: response.text || 'Error generating.' }]);
     } catch (e:any) {
@@ -784,38 +687,36 @@ Question: ${q}` }] }]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 no-print">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="relative w-full max-w-5xl h-[80vh] flex flex-col bg-[#0d0d14] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+      <div className="absolute inset-0 bg-[#0a0a0f]/90 backdrop-blur-xl" onClick={onClose} />
+      <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="relative w-full max-w-6xl h-[85vh] flex flex-col bg-[#0d0d14] border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+        
+        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')] bg-white/[0.01]">
            <div>
-             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-               <Activity className="w-5 h-5 text-indigo-400" />
-               Run Details: <span className="font-mono text-indigo-300 ml-1">{run.id}</span>
+             <h2 className="text-xl font-bold text-white flex items-center gap-3 tracking-tight">
+               <Activity className="w-6 h-6 text-indigo-400" />
+               Simulation Trace
              </h2>
-             <p className="text-xs text-slate-400 mt-1">{run.workflowName} · {new Date(run.completedAt).toLocaleString()}</p>
+             <p className="text-xs text-slate-400 mt-2 font-mono">TRACE_ID: {run.id} · {new Date(run.completedAt).toLocaleString()}</p>
            </div>
-           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
         
-        {/* Tabs */}
-        <div className="flex border-b border-white/10 px-4 bg-[#0a0a0f]">
+        <div className="flex border-b border-white/5 px-6 shrink-0 pt-2 bg-[#0a0a0f]">
           {[
-            { id: 'graph', label: 'Graph Preview', icon: Network },
-            { id: 'exec', label: 'Execution Logs', icon: Terminal },
-            { id: 'agent', label: 'Agent Logs', icon: FileText },
-            { id: 'chat', label: 'Ask Gemini', icon: MessageSquare }
+            { id: 'graph', label: 'Topology Map', icon: Network },
+            { id: 'exec', label: 'System Telemetry', icon: Terminal },
+            { id: 'agent', label: 'Agent Reasoning', icon: FileText },
+            { id: 'chat', label: 'Inspector AI', icon: MessageSquare }
           ].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id as any)} className={cn("flex items-center gap-2 px-4 py-3 text-xs font-semibold uppercase tracking-wider relative transition-colors", tab===t.id?"text-white":"text-slate-500 hover:text-slate-300")}>
-               <t.icon className="w-3.5 h-3.5" />
+            <button key={t.id} onClick={() => setTab(t.id as any)} className={cn("flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-widest relative transition-colors", tab===t.id?"text-white":"text-slate-500 hover:text-slate-300")}>
+               <t.icon className="w-4 h-4" />
                {t.label}
-               {tab === t.id && <motion.div layoutId="runTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500" />}
+               {tab === t.id && <motion.div layoutId="runTabDetail" className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500" />}
             </button>
           ))}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden relative bg-[#0a0a0f]">
+        <div className="flex-1 overflow-hidden relative">
            {tab === 'graph' && (
              <ReactFlow 
                nodes={previewNodes} 
@@ -828,21 +729,21 @@ Question: ${q}` }] }]
                zoomOnScroll={false}
                panOnDrag={true}
              >
-               <Background color="#ffffff" gap={24} size={1} opacity={0.05} />
-               <Controls showInteractive={false} />
+               <Background color="#ffffff" gap={24} size={1} opacity={0.03} />
+               <Controls showInteractive={false} className="opacity-50 hover:opacity-100" />
              </ReactFlow>
            )}
            
            {tab === 'exec' && (
-             <div className="h-full overflow-y-auto p-4 font-mono text-[11px] space-y-1">
+             <div className="h-full overflow-y-auto p-6 font-mono text-xs space-y-2 bg-[#050508]">
                 {run.executionLogs.map((log, i) => (
-                  <div key={i} className={cn("p-1.5 rounded", 
-                     log.message.includes('FAILED') || log.message.includes('BLOCKED') ? "text-red-400 bg-red-500/5" :
-                     log.message.includes('COMPLETED') || log.message.includes('SUCCESS') ? "text-green-400 bg-green-500/5" :
-                     log.message.includes('ESCALATED') ? "text-amber-400 bg-amber-500/5" :
-                     log.message.includes('ORCHESTRATOR') ? "text-indigo-400 bg-indigo-500/5" : "text-slate-400"
+                  <div key={i} className={cn("p-3 rounded-lg border", 
+                     log.message.includes('FAILED') || log.message.includes('BLOCKED') ? "text-rose-400 bg-rose-500/5 border-rose-500/10" :
+                     log.message.includes('COMPLETED') || log.message.includes('SUCCESS') ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/10" :
+                     log.message.includes('ESCALATED') ? "text-amber-400 bg-amber-500/5 border-amber-500/10" :
+                     log.message.includes('ORCHESTRATOR') ? "text-indigo-400 bg-indigo-500/5 border-indigo-500/10" : "text-slate-400 bg-white/[0.02] border-white/5"
                   )}>
-                    <span className="text-slate-600 mr-3">[{log.timestamp}]</span>
+                    <span className="text-slate-600 mr-4 opacity-50">[{log.timestamp}]</span>
                     {log.message}
                   </div>
                 ))}
@@ -850,46 +751,56 @@ Question: ${q}` }] }]
            )}
 
            {tab === 'agent' && (
-             <div className="h-full overflow-y-auto p-4 font-mono text-[11px] space-y-1">
-                {run.analysisLogs.length === 0 && <div className="text-slate-500 italic p-4 text-center">No agent logs available for this run.</div>}
+             <div className="h-full overflow-y-auto p-6 font-mono text-xs space-y-2 bg-[#050508]">
+                {run.analysisLogs.length === 0 && <div className="text-slate-500 italic text-center mt-10">No reasoning trace persisted for this segment.</div>}
                 {run.analysisLogs.map((log, i) => {
-                  let colorClass = 'text-slate-300';
+                  let colorClass = 'text-slate-400';
                   if (log.startsWith('[SYSTEM]')) colorClass = 'text-indigo-400 font-bold';
-                  else if (log.startsWith('[ERROR]')) colorClass = 'text-red-400 font-bold';
-                  return <div key={i} className={`font-mono text-[11px] py-0.5 border-b border-white/5 ${colorClass}`}>{log}</div>;
+                  else if (log.startsWith('[ERROR]')) colorClass = 'text-rose-400 font-bold';
+                  return <div key={i} className={`p-4 rounded-xl bg-white/[0.02] border border-white/5 ${colorClass}`}>{log}</div>;
                 })}
              </div>
            )}
 
            {tab === 'chat' && (
-             <div className="h-full flex flex-col p-4 max-w-3xl mx-auto">
-                <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+             <div className="h-full flex flex-col p-6 max-w-4xl mx-auto">
+                <div className="flex-1 overflow-y-auto space-y-6 mb-6 pr-4">
                    {chatMessages.length === 0 && (
-                     <div className="text-center mt-12 grid grid-cols-2 gap-2">
-                       {['Why was this escalated?', 'Which steps had highest risk?', 'What systems were affected?', 'Was this workflow compliant?'].map(q => (
-                         <button key={q} onClick={() => setChatInput(q)} className="border border-white/10 bg-white/5 hover:bg-white/10 text-xs text-slate-300 p-3 rounded-xl transition-colors text-left">{q}</button>
-                       ))}
+                     <div className="text-center mt-20 max-w-lg mx-auto">
+                        <MessageSquare className="w-12 h-12 text-slate-700 mx-auto mb-6" />
+                        <h3 className="text-xl font-bold text-white mb-2">Interrogate this Simulation</h3>
+                        <p className="text-slate-400 text-sm mb-8 text-balance">Use AI to extract insights, root causes, and security validations specifically scoped to this orchestration trace.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {['Analyze security blocks', 'Explain the escalation', 'List systems touched', 'Was PII exposed?'].map(q => (
+                            <button key={q} onClick={() => setChatInput(q)} className="border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-sm text-slate-300 p-4 rounded-2xl transition-all text-left">{q}</button>
+                          ))}
+                        </div>
                      </div>
                    )}
                    {chatMessages.map((msg, i) => (
-                      <div key={i} className={cn("flex flex-col gap-1 max-w-[85%]", msg.role==='user'?"items-end self-end ml-auto":"items-start self-start")}>
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{msg.role === 'user' ? 'You' : '⚡ Gemini'}</span>
-                        <div className={cn("text-[12px] leading-relaxed p-3 rounded-2xl", msg.role==='user'?"bg-indigo-600 border border-transparent text-white":"bg-white/5 border border-white/10 text-slate-200")}>
+                      <div key={i} className={cn("flex flex-col gap-2 max-w-[85%]", msg.role==='user'?"items-end self-end ml-auto":"items-start self-start")}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-1">{msg.role === 'user' ? 'Operator' : 'ContextOS Intelligence'}</span>
+                        <div className={cn("text-sm leading-relaxed p-4 rounded-3xl", msg.role==='user'?"bg-indigo-600 border border-transparent text-white rounded-br-sm":"bg-white/5 border border-white/10 text-slate-200 rounded-bl-sm")}>
                           {msg.text}
                         </div>
                       </div>
                    ))}
-                   {chatLoading && <div className="text-[11px] text-slate-500">Gemini is analyzing run...</div>}
+                   {chatLoading && (
+                     <div className="flex items-center gap-3 text-sm text-slate-500 p-4">
+                       <SpinnerIcon className="w-4 h-4 animate-spin" />
+                       Synthesizing answer...
+                     </div>
+                   )}
                 </div>
                 <div className="relative shrink-0">
                   <input 
                     value={chatInput} onChange={e => setChatInput(e.target.value)}
                     onKeyDown={e => { if(e.key==='Enter' && !chatLoading) askRunChat() }}
-                    placeholder={`Ask about run ${run.id}...`}
-                    className="w-full bg-[#12121a] border border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50"
+                    placeholder={`Interrogate TRACE_${run.id}...`}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl pl-6 pr-14 py-4 text-white focus:outline-none focus:border-indigo-500/50 focus:bg-white/10 transition-all font-medium"
                   />
-                   <button disabled={chatLoading || !chatInput.trim()} onClick={askRunChat} className="absolute right-2 top-1.5 bottom-1.5 w-10 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 flex items-center justify-center rounded-lg transition-colors">
-                      <Send className="w-4 h-4 text-white" />
+                   <button disabled={chatLoading || !chatInput.trim()} onClick={askRunChat} className="absolute right-2 top-2 bottom-2 w-12 bg-white text-black hover:bg-slate-200 disabled:opacity-50 flex items-center justify-center rounded-xl transition-colors">
+                      <Send className="w-5 h-5 ml-1" />
                    </button>
                 </div>
              </div>

@@ -149,6 +149,35 @@ export function getRunDetailSimulatedResponse(question: string): string {
   return matchResponse(question, RUN_DETAIL_RESPONSES);
 }
 
+// ─── Security page — Governance & Security ────────────────────────────────
+
+const SECURITY_RESPONSES: ResponseMap = [
+  {
+    keywords: ['block', 'alert', 'guard', 'intercept', 'why', 'reason', 'violation'],
+    response:
+      'The Veea Edge Security Enclave proactively intercepts actions that violate configured policies. The most recent block was triggered by SEC-447 (Data Exfiltration Guard) because the orchestrated workflow attempted to move payroll data outside the defined enterprise boundary without explicit authorization.',
+  },
+  {
+    keywords: ['policy', 'rule', 'sec-447', 'iam-221', 'dlp', 'control'],
+    response:
+      'ContextOS currently enforces 5 active zero-trust policies through Veea Edge v2.1. The ruleset includes SEC-447 for Data Exfiltration (High Severity), IAM-221 for Unauthorized Access (High Severity), and DLP controls for PII. These policies operate automatically and independently to contain risky agent behavior in real-time.',
+  },
+  {
+    keywords: ['enclave', 'veea', 'edge', 'isolate', 'where', 'how'],
+    response:
+      'The Veea Edge Security Enclave processes all autonomous AI workflow actions securely at the network edge. This ensures that every action complies with enterprise Role-Based Access Control (RBAC) boundaries and Data Loss Prevention (DLP) constraints in complete isolation before reaching downstream systems.',
+  },
+  {
+    keywords: ['audit', 'event', 'log', 'export', 'history'],
+    response:
+      'The active Live Guardrail Inspection feed captures all evaluated workflow actions. You can track passed compliance checks, warnings requiring review, and hard blocks. You can export the current audit session as a structured JSON file at the top right of the dashboard.',
+  },
+];
+
+export function getSecuritySimulatedResponse(question: string): string {
+  return matchResponse(question, SECURITY_RESPONSES);
+}
+
 // ─── Simulated workflow analysis response (for Analysis page) ──────────────
 
 export const SIMULATED_ANALYSIS_LOGS = [

@@ -1,11 +1,14 @@
 import React from 'react';
-import { ShieldAlert, Fingerprint, Lock, ShieldCheck, AlertOctagon, Download, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Fingerprint, Lock, ShieldCheck, AlertOctagon, Download, AlertTriangle, MessageSquare, Send, X, Loader2 as SpinnerIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { motion, AnimatePresence } from 'motion/react';
 import { useWorkflowRuntime } from '@/context/WorkflowRuntimeContext';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { GoogleGenAI } from '@google/genai';
+import { incrementApiCall, isApiLimitReached } from '@/lib/simulation/apiCounter';
+import { getSecuritySimulatedResponse } from '@/lib/simulation/simulatedResponses';
 
 const POLICY_RULES = [
   { id: 'SEC-447', name: 'Data Exfiltration Guard',       severity: 'HIGH',   triggerKey: 'BLOCK' },
@@ -17,7 +20,13 @@ const POLICY_RULES = [
 
 export function SecurityDashboard() {
   const { state: { securityEvents, workflow } } = useWorkflowRuntime();
-  const { hasRedactedPII } = useStore();
+  const { hasRedactedPII, aiModel } = useStore();
+
+  const [chatOpen, setChatOpen] = React.useState(false);
+  const [chatInput, setChatInput] = React.useState('');
+  const [chatMessages, setChatMessages] = React.useState<Array<{ role: 'user' | 'ai'; text: string }>>([]);
+  const [chatLoading, setChatLoading] = React.useState(false);
+  const chatEndRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     document.title = "Governance & Security | ContextOS";
@@ -25,6 +34,65 @@ export function SecurityDashboard() {
   
   const blockedEvents = securityEvents.filter(e => e.status === 'BLOCK');
   const latestBlock = blockedEvents[0];
+
+  const SUGGESTED_QUESTIONS = [
+    'Why was the action blocked?',
+    'What policies are active?',
+    'How does the Veea Edge Enclave work?',
+  ];
+
+  const askSecurity = async (question: string) => {
+    if (!question.trim()) return;
+    setChatMessages(prev => [...prev, { role: 'user', text: question }]);
+    setChatInput('');
+    setChatLoading(true);
+
+    // Simulated mode — return keyword-matched canned response
+    if (aiModel === 'gemini-simulated' || isApiLimitReached()) {
+      await new Promise(r => setTimeout(r, 800));
+      setChatMessages(prev => [...prev, { role: 'ai', text: getSecuritySimulatedResponse(question) }]);
+      setChatLoading(false);
+      return;
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'AI_STUDIO_FREE_TIER' });
+      const context = JSON.stringify({
+        security_events: securityEvents,
+        active_policies: POLICY_RULES,
+      });
+      incrementApiCall();
+      const response = await ai.models.generateContent({
+        model: aiModel || 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: `You are ContextOS Platform Intelligence — a specialized enterprise security and governance assistant.
+You ONLY answer questions about:
+- The security events, policy violations, and guardrail blocks in the current session
+- Active policies and compliance rules
+- The Veea Edge Security Enclave and zero-trust configuration
+
+If the question is not directly related to these topics, respond ONLY with:
+"I can only assist with questions about security policies, guardrail events, and the Veea Edge enclave."
+
+DO NOT answer general knowledge, science, history, or any topic outside enterprise governance and security.
+Answer concisely in 2-4 sentences maximum.
+
+Security context:
+${context}
+
+Question: ${question}` }] }],
+      });
+      const answer = response.text || 'Unable to generate an answer.';
+      setChatMessages(prev => [...prev, { role: 'ai', text: answer }]);
+    } catch (e: any) {
+      setChatMessages(prev => [...prev, { role: 'ai', text: `Error: ${e.message || 'Failed to get answer.'}` }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const exportAuditLog = () => {
     const data = {
@@ -121,17 +189,18 @@ export function SecurityDashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
         {/* Left: Prompt Feed */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 h-full">
           <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-2 shrink-0">
             <Fingerprint className="w-4 h-4" />
             Live Guardrail Inspection
           </h3>
-          <Card className="overflow-hidden flex flex-col bg-[#0d0d14] border-white/5 rounded-2xl shadow-xl min-h-[300px] max-h-[520px]">
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <AnimatePresence>
-                {securityEvents.map((feed) => (
+          <div className="flex-1 relative">
+            <Card className="absolute inset-0 overflow-hidden flex flex-col bg-[#0d0d14] border-white/5 rounded-2xl shadow-xl">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <AnimatePresence>
+                  {securityEvents.map((feed) => (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -179,92 +248,95 @@ export function SecurityDashboard() {
               </AnimatePresence>
             </div>
           </Card>
+          </div>
         </div>
 
         {/* Right: Blocked Action Audit */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 h-full">
           <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-2 shrink-0">
             <Lock className="w-4 h-4" />
             Audit Findings
           </h3>
           
-          <AnimatePresence>
-            {latestBlock ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="rounded-2xl bg-amber-950/10 border border-amber-900/30 p-1 overflow-hidden"
-              >
-                <div className="bg-[#0d0d14] w-full h-full rounded-xl p-6 relative overflow-hidden ring-1 ring-amber-500/20">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 blur-[100px] rounded-full pointer-events-none" />
-                  
-                  <div className="flex items-start gap-4 mb-6">
-                    <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20">
-                      <AlertOctagon className="w-8 h-8 text-amber-500" />
-                    </div>
-                    <div>
-                      <h4 className="text-xl font-bold text-white mb-1 tracking-tight">Critical Action Blocked</h4>
-                      <p className="text-slate-400 text-sm">Automated workflow attempted restricted operation.</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-3 border-b border-white/5 py-3">
-                      <span className="text-slate-400 text-sm">Target Action</span>
-                      <span className="col-span-2 text-white font-mono text-sm text-amber-400">
-                        {latestBlock.message.match(/'([^']+)'/)?.[1] || latestBlock.message.split('violated')[0] || "Restricted Operation"}
-                      </span>
-                    </div>
+          <div className="flex-1">
+            <AnimatePresence>
+              {latestBlock ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="rounded-2xl bg-amber-950/10 border border-amber-900/30 p-1 overflow-hidden"
+                >
+                  <div className="bg-[#0d0d14] w-full h-full rounded-xl p-6 relative overflow-hidden ring-1 ring-amber-500/20">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 blur-[100px] rounded-full pointer-events-none" />
                     
-                    <div className="grid grid-cols-3 border-b border-white/5 py-3">
-                      <span className="text-slate-400 text-sm">Target System</span>
-                      <span className="col-span-2 text-white text-sm">Enterprise Identity / Finance</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 border-b border-white/5 py-3">
-                      <span className="text-slate-400 text-sm">Risk Score</span>
-                      <div className="col-span-2 flex items-center gap-3">
-                        <span className="text-white text-sm font-semibold">94/100</span>
-                        <div className="flex-1 h-2 bg-black/50 rounded-full overflow-hidden">
-                          <div className="h-full w-[94%] bg-amber-500 rounded-full" />
-                        </div>
+                    <div className="flex items-start gap-4 mb-6">
+                      <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                        <AlertOctagon className="w-8 h-8 text-amber-500" />
+                      </div>
+                      <div>
+                        <h4 className="text-xl font-bold text-white mb-1 tracking-tight">Critical Action Blocked</h4>
+                        <p className="text-slate-400 text-sm">Automated workflow attempted restricted operation.</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 border-b border-white/5 py-3">
-                      <span className="text-slate-400 text-sm">Violated Policy</span>
-                      <span className="col-span-2 text-white text-sm">
-                        {latestBlock.policyContext || "PII Exfiltration Prevention"}
-                      </span>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 border-b border-white/5 py-3">
+                        <span className="text-slate-400 text-sm">Target Action</span>
+                        <span className="col-span-2 text-white font-mono text-sm text-amber-400">
+                          {latestBlock.message.match(/'([^']+)'/)?.[1] || latestBlock.message.split('violated')[0] || "Restricted Operation"}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 border-b border-white/5 py-3">
+                        <span className="text-slate-400 text-sm">Target System</span>
+                        <span className="col-span-2 text-white text-sm">Enterprise Identity / Finance</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 border-b border-white/5 py-3">
+                        <span className="text-slate-400 text-sm">Risk Score</span>
+                        <div className="col-span-2 flex items-center gap-3">
+                          <span className="text-white text-sm font-semibold">94/100</span>
+                          <div className="flex-1 h-2 bg-black/50 rounded-full overflow-hidden">
+                            <div className="h-full w-[94%] bg-amber-500 rounded-full" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 border-b border-white/5 py-3">
+                        <span className="text-slate-400 text-sm">Violated Policy</span>
+                        <span className="col-span-2 text-white text-sm">
+                          {latestBlock.policyContext || "PII Exfiltration Prevention"}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            ) : (
-                <div className="rounded-2xl bg-[#0d0d14] border border-white/5 p-6 flex flex-col items-center justify-center min-h-[300px] text-center gap-3">
-                   <ShieldCheck className="w-10 h-10 text-blue-500/50" />
-                   {securityEvents.length > 0 ? (
-                      <p className="text-slate-400 text-sm max-w-[200px]">Veea Governance engine intercepted {securityEvents.length} privileged workflow actions. No unresolved security violations detected.</p>
-                   ) : (
-                      <p className="text-slate-500 text-sm">Awaiting workflow execution to monitor for security events across the edge network.</p>
-                   )}
-                </div>
-            )}
-          </AnimatePresence>
+                </motion.div>
+              ) : (
+                  <div className="rounded-2xl bg-[#0d0d14] border border-white/5 p-6 flex flex-col items-center justify-center min-h-[300px] text-center gap-3">
+                     <ShieldCheck className="w-10 h-10 text-blue-500/50" />
+                     {securityEvents.length > 0 ? (
+                        <p className="text-slate-400 text-sm max-w-[200px]">Veea Governance engine intercepted {securityEvents.length} privileged workflow actions. No unresolved security violations detected.</p>
+                     ) : (
+                        <p className="text-slate-500 text-sm">Awaiting workflow execution to monitor for security events across the edge network.</p>
+                     )}
+                  </div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <Card className="p-6 bg-gradient-to-br from-[#0d0d14] to-[#0a1128] flex flex-col justify-center border-blue-900/30 rounded-2xl shadow-xl relative overflow-hidden mt-auto min-h-[140px]">
+             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
+             <div className="text-center max-w-sm mx-auto relative z-10">
+               <ShieldCheck className="w-10 h-10 text-blue-400/80 mx-auto mb-3" />
+               <h4 className="text-white font-medium mb-1 tracking-wide text-sm">Veea Edge Security Enclave</h4>
+               <p className="text-slate-400 text-xs leading-relaxed">
+                 All autonomous AI actions are processed securely at the edge, complying with enterprise RBAC boundaries and DLP constraints via Veea zero-trust isolation.
+               </p>
+             </div>
+          </Card>
         </div>
       </div>
 
-      {/* Veea Edge Security Enclave — full-width below the grid */}
-      <Card className="p-6 bg-gradient-to-br from-[#0d0d14] to-[#0a1128] flex flex-col justify-center border-blue-900/30 rounded-2xl shadow-xl relative overflow-hidden">
-         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
-         <div className="text-center max-w-sm mx-auto relative z-10">
-           <ShieldCheck className="w-12 h-12 text-blue-400/80 mx-auto mb-4" />
-           <h4 className="text-white font-medium mb-2 tracking-wide">Veea Edge Security Enclave</h4>
-           <p className="text-slate-400 text-xs leading-relaxed">
-             All autonomous AI actions are processed securely at the edge, complying with enterprise RBAC boundaries and DLP constraints via Veea zero-trust isolation.
-           </p>
-         </div>
-      </Card>
       <div>
         <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-2 mb-4">
           <ShieldCheck className="w-4 h-4" />
@@ -310,6 +382,87 @@ export function SecurityDashboard() {
         </Card>
       </div>
 
+      {/* Ask Security — RAG Chat Panel */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+        {chatOpen && (
+          <div className="w-80 bg-[#0d0d14] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '420px' }}>
+            <div className="px-4 py-3 border-b border-white/10 bg-white/[0.02] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-semibold text-white">Ask Security</span>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded">Gemini RAG</span>
+              </div>
+              <button onClick={() => setChatOpen(false)} className="text-slate-500 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0" style={{ maxHeight: '260px' }}>
+              {chatMessages.length === 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-slate-500 text-center mb-3">Ask about the edge enclave and live intercepts</p>
+                  {SUGGESTED_QUESTIONS.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => askSecurity(q)}
+                      className="w-full text-left text-[11px] text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-3 py-2 transition-colors"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500">{msg.role === 'user' ? 'You' : '⚡ Gemini'}</span>
+                  <div className={`text-[11px] leading-relaxed rounded-xl px-3 py-2 max-w-[90%] ${
+                    msg.role === 'user'
+                      ? 'bg-indigo-500/20 text-indigo-100 border border-indigo-500/20'
+                      : 'bg-white/5 text-slate-200 border border-white/10'
+                  }`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex items-center gap-2 text-slate-500">
+                  <SpinnerIcon className="w-3 h-3 animate-spin" />
+                  <span className="text-[11px]">Gemini is thinking...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="p-3 border-t border-white/10 shrink-0">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !chatLoading) askSecurity(chatInput); }}
+                  placeholder="Ask about governance..."
+                  className="flex-1 text-[11px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none focus:border-purple-500/50 transition-colors"
+                />
+                <button
+                  onClick={() => askSecurity(chatInput)}
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="w-8 h-8 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5 text-white" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={() => setChatOpen(!chatOpen)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg shadow-purple-900/30 transition-all"
+        >
+          <MessageSquare className="w-4 h-4" />
+          Ask Security
+        </button>
+      </div>
     </div>
   );
 }
