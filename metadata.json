@@ -1,0 +1,6 @@
+{
+  "name": "ContextOS",
+  "description": "Multimodal Enterprise Reasoning Engine. Transforms undocumented enterprise behavior into secure autonomous workflows using multimodal Gemini agents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
