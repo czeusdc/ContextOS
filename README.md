@@ -4,12 +4,12 @@
 
 ### *Convert undocumented enterprise chaos into governed, Gemini-powered AI pipelines.*
 
-[![Track 2: AI Agents · Google AI Studio](https://img.shields.io/badge/Track%202-AI%20Agents%20·%20Google%20AI%20Studio-4f46e5?style=flat-square&logo=google)](https://ai.google.dev/)
-[![Track 1: Security & Governance](https://img.shields.io/badge/Track%201-Security%20&%20Governance%20·%20Veea-b45309?style=flat-square)](https://veea.com/)
-[![Track 3: Digital Twin Simulation](https://img.shields.io/badge/Track%203-Digital%20Twin%20Simulation-0d9488?style=flat-square)](/)
-[![Track 4: Data & Intelligence](https://img.shields.io/badge/Track%204-Data%20&%20Intelligence-7c3aed?style=flat-square)](/)
+[![Track 2: AI Agents · Google AI Studio](https://img.shields.io/badge/PRIMARY-Track%202%3A%20AI%20Agents%20·%20Google%20AI%20Studio-4f46e5?style=flat-square&logo=google)](https://ai.google.dev/)
+[![Track 1: Security & Governance](https://img.shields.io/badge/SECONDARY-Track%201%3A%20Security%20&%20Governance%20·%20Veea-b45309?style=flat-square)](https://veea.com/)
+[![Track 4: Data & Intelligence](https://img.shields.io/badge/BONUS-Track%204%3A%20Data%20&%20Intelligence-7c3aed?style=flat-square)](/)
+[![Track 3: Digital Twin Simulation](https://img.shields.io/badge/BONUS-Track%203%3A%20Digital%20Twin%20Simulation-0d9488?style=flat-square)](/)
 
-**Built with Gemini 2.5 Pro · React 19 · React Flow · Veea Edge**
+**Built with Gemini 3.1 Pro · React 19 · React Flow · Veea Edge**
 
 [**→ Try the Live Demo**](https://aistudio.google.com/apps/8c1cb6b1-8ae5-4d3d-8393-8f1920860e7c)
 
@@ -30,12 +30,13 @@ The result: **30% of enterprise workforce time** is lost to manual, siloed coord
 ## What ContextOS Does
 
 - 📄 **Multimodal SOP Ingestion** — Accepts PDFs, images, and text documents. Runs PII redaction locally before any cloud transmission.
-- 🧠 **Gemini-Powered Workflow Inference** — Gemini 2.5 Pro extracts structural dependencies, departmental boundaries, and risk classifications from unstructured content, outputting a strict DAG schema.
+- 🧠 **Gemini-Powered Workflow Inference** — Gemini 3.1 Pro extracts structural dependencies, departmental boundaries, and risk classifications from unstructured content, outputting a strict DAG schema.
 - 🕸️ **Execution Graph Generation** — The inferred topology is rendered as an interactive directed acyclic graph (DAG) via React Flow, with node-level risk profiling.
 - 🤖 **Multi-Agent Orchestration** — 4 specialized agents coordinate in sequence: Workflow Analyst → Security Governance → Systems Integration → Execution Planner.
 - 🔐 **Zero-Trust Policy Engine (Veea Edge)** — A deterministic governance layer sits between AI reasoning and execution. High-risk nodes trigger mandatory human approval — the AI cannot bypass it.
 - 👤 **Human-in-the-Loop** — Security operations can approve or deny high-risk actions in real time. Denial permanently aborts the execution branch and writes to the audit log.
 - 💬 **Ask the Workflow** — Natural language Q&A over any generated workflow, powered by Gemini RAG.
+- 📊 **Executive Intelligence** — Full operational reporting with charts, metric forecasting, and high-fidelity PDF exports.
 - 🖥️ **Digital Twin Operations Console** — Live system state mirrors (Google Workspace, Slack, HRIS, Workday) update in real-time as the simulation executes.
 
 ---
@@ -45,7 +46,7 @@ The result: **30% of enterprise workforce time** is lost to manual, siloed coord
 ```
 ┌─────────────────┐       ┌────────────────────┐       ┌────────────────────────┐
 │  Input Layer    │ ────> │  AI Context Layer  │ ────> │  Orchestration Engine  │
-│ (SOPs, Images,  │       │ (Gemini 2.5 Pro)   │       │ (DAG Graph Generation) │
+│ (SOPs, Images,  │       │ (Gemini 3.1 Pro)   │       │ (DAG Graph Generation) │
 │  PDFs, Text)    │       │ Structure Inference│       └─────┬──────────────────┘
 └─────────────────┘       └────────────────────┘             │
                                                              v
@@ -63,15 +64,17 @@ The LLM **proposes** the graph. The deterministic Orchestration Engine **travers
 
 ## Track Alignment
 
+**Primary:** Track 2 (AI Agents) · **Secondary:** Track 1 (Security & Governance) · **Bonus:** Tracks 3 & 4
+
 | Track | Focus Area | How ContextOS Addresses It |
 |---|---|---|
-| **Track 2** — AI Agents (Gemini) | Multi-agent systems using Gemini | 4 specialized agents (Analyst, Security, Systems, Planner) orchestrated via Gemini 2.5 Pro |
+| **Track 2** — AI Agents (Gemini) | Multi-agent systems using Gemini | 4 specialized agents (Analyst, Security, Systems, Planner) orchestrated via Gemini 3.1 Pro |
 | **Track 2** | Long-context document processing | Multimodal SOP ingestion: PDF (pdfjs), images (Gemini Vision), text — all processed with Gemini |
 | **Track 2** | Enterprise integrations (CRM, ERP, APIs) | Workflow nodes map to real enterprise systems: Google Workspace, Slack, Jira, Workday, SAP |
 | **Track 2** | Internal AI tools (knowledge bases, ops automation) | "Ask the Workflow" RAG — natural language querying over extracted workflow knowledge |
 | **Track 1** — Security & Governance (Veea) | Guardrails and safety layers for agentic workflows | Deterministic policy engine intercepts every high-risk node before execution |
 | **Track 1** | Monitoring and observability for AI agents | Live security event feed with PASS / REVIEW / BLOCK classifications |
-| **Track 1** | Audit trails for regulated industries | One-click export of the full audit log as structured JSON |
+| **Track 1** | Audit trails for regulated industries | One-click export of the full audit log as structured JSON, plus Executive PDF reports |
 | **Track 1** | Human-in-the-loop for access control | Escalation modal with multi-agent governance discussion — requires human approval to proceed |
 | **Track 3** — Robotics & Simulation | Simulation environments for training/testing | Full enterprise workflow simulation — dry-run mode executes every node without real API calls |
 | **Track 3** | Digital twins for industrial environments | Live System State mirrors (Google Workspace, Slack, HRIS, Workday) — real-time digital twin dashboard |
@@ -92,7 +95,7 @@ The LLM **proposes** the graph. The deterministic Orchestration Engine **travers
 5. **Trigger the escalation** — the `SEC-447 Data Exfiltration Guard` fires on the Finance node. Three agents debate in the governance panel.
 6. **Deny or approve** — denial permanently aborts the downstream branch and writes to the audit log
 7. **Ask the Workflow** — type *"What are the highest risk steps?"* and Gemini answers in real-time
-8. **Export** the audit log from the Security page — structured JSON of every governance decision
+8. **Export** the audit log from the Security page (JSON) or generate the **Executive Intelligence Report** (PDF) from the Report page.
 
 ---
 
@@ -101,9 +104,10 @@ The LLM **proposes** the graph. The deterministic Orchestration Engine **travers
 | Layer | Technology |
 |---|---|
 | Frontend | React 19, Vite, TypeScript, TailwindCSS |
-| AI Engine | Google Gemini 2.5 Pro / Flash (`@google/genai`) |
+| AI Engine | Google Gemini 3.1 Pro / Flash (`@google/genai`) |
 | Graph Visualization | React Flow (`@xyflow/react`) |
 | Document Parsing | pdfjs-dist (PDF), Gemini Vision (images) |
+| Reporting | jsPDF, html-to-image (High-fidelity PDF Export) |
 | Governance Layer | Veea Edge Zero-Trust Architecture · Deterministic Policy Engine |
 | Animation | Framer Motion (`motion/react`) |
 | Backend | Express.js (Node.js), serves static dist |
@@ -128,6 +132,12 @@ npm run dev
 ```
 
 **To run the full demo without uploading a file:** Click **"Try Live Demo"** on the Upload page. This loads a pre-built Employee Offboarding workflow and skips Gemini generation entirely — guaranteed to trigger the escalation modal and showcase every feature.
+
+**To generate the hackathon pitch deck PDF:**
+```bash
+npx tsx scripts/generate-pitch.ts
+# Outputs: ContextOS-Pitch-Deck.pdf (10 pages)
+```
 
 ---
 
